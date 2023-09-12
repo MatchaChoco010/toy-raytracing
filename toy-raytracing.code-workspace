@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "00_toy_cpu/toy_cpu"
+		}
+	],
+	"settings": {
+		"cSpell.words": [
+			"aabb",
+			"lerp",
+			"powf",
+			"raytracing",
+			"Reinhard",
+			"tmax",
+			"tmin",
+			"tobj"
+		]
+	}
+}
