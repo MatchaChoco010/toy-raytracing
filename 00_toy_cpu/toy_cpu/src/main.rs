@@ -5,10 +5,169 @@ use rand::distributions::Uniform;
 use rand::prelude::*;
 use rayon::prelude::*;
 
+struct Sample {
+    sample_dir_tangent: glam::Vec3,
+    bsdf_multiplied_cos_divided_by_pdf: glam::Vec3,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Material {
     Lambert { color: glam::Vec3 },
     Emissive { color: glam::Vec3, strength: f32 },
+    Glass { inner_eta: f32, outer_eta: f32 },
+}
+impl Material {
+    fn emissive(&self) -> glam::Vec3 {
+        match self {
+            Material::Lambert { .. } => glam::Vec3::ZERO,
+            Material::Emissive { color, strength } => *color * *strength,
+            Material::Glass { .. } => glam::Vec3::ZERO,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn bsdf(
+        &self,
+        view_dir_tangent: glam::Vec3,
+        light_dir_tangent: glam::Vec3,
+        front_hit: bool,
+    ) -> glam::Vec3 {
+        match self {
+            Material::Lambert { color } => *color / std::f32::consts::PI,
+            Material::Emissive { .. } => glam::Vec3::ZERO,
+            Material::Glass {
+                inner_eta,
+                outer_eta,
+            } => {
+                let (eta_1, eta_2) = if front_hit {
+                    (*outer_eta, *inner_eta)
+                } else {
+                    (*inner_eta, *outer_eta)
+                };
+
+                let refract_dir = (eta_1 / eta_2)
+                    * (-view_dir_tangent + view_dir_tangent.dot(glam::Vec3::Y) * glam::Vec3::Y)
+                    - (1.0
+                        - (eta_1 / eta_2).powi(2)
+                            * (1.0 + view_dir_tangent.dot(glam::Vec3::Y).powi(2)))
+                    .sqrt()
+                        * glam::Vec3::Y;
+                let reflect_dir =
+                    -2.0 * -view_dir_tangent.dot(glam::Vec3::Y) * glam::Vec3::Y - view_dir_tangent;
+
+                let is_total_internal_reflection = (1.0
+                    - (eta_1 / eta_2).powi(2)
+                        * (1.0 + view_dir_tangent.dot(glam::Vec3::Y).powi(2)))
+                    < 0.0;
+
+                if is_total_internal_reflection {
+                    if reflect_dir.dot(light_dir_tangent) > 0.99999 {
+                        glam::Vec3::ONE
+                    } else {
+                        glam::Vec3::ZERO
+                    }
+                } else {
+                    if reflect_dir.dot(light_dir_tangent) > 0.99999
+                        || refract_dir.dot(light_dir_tangent) > 0.99999
+                    {
+                        glam::Vec3::ONE
+                    } else {
+                        glam::Vec3::ZERO
+                    }
+                }
+            }
+        }
+    }
+
+    fn sample(
+        &self,
+        view_dir_tangent: glam::Vec3,
+        front_hit: bool,
+        mut rng: &mut ThreadRng,
+    ) -> Option<Sample> {
+        match self {
+            Material::Lambert { color, .. } => {
+                let uniform = Uniform::new(0.0, 1.0);
+
+                let (u1, u2): (f32, f32) = (uniform.sample(&mut rng), uniform.sample(&mut rng));
+                let r = u1.sqrt();
+                let phi = 2.0 * std::f32::consts::PI * u2;
+                let sample_dir = glam::Vec3::new(r * phi.cos(), (1.0 - u1).sqrt(), r * phi.sin());
+
+                let sample = Sample {
+                    sample_dir_tangent: sample_dir,
+                    bsdf_multiplied_cos_divided_by_pdf: *color,
+                };
+
+                Some(sample)
+            }
+            Material::Emissive { .. } => None,
+            Material::Glass {
+                inner_eta,
+                outer_eta,
+            } => {
+                let (eta_1, eta_2) = if front_hit {
+                    (*outer_eta, *inner_eta)
+                } else {
+                    (*inner_eta, *outer_eta)
+                };
+
+                let refract_dir = (eta_1 / eta_2)
+                    * (-view_dir_tangent + view_dir_tangent.dot(glam::Vec3::Y) * glam::Vec3::Y)
+                    - (1.0
+                        - (eta_1 / eta_2).powi(2)
+                            * (1.0 + view_dir_tangent.dot(glam::Vec3::Y).powi(2)))
+                    .sqrt()
+                        * glam::Vec3::Y;
+                let reflect_dir =
+                    -2.0 * -view_dir_tangent.dot(glam::Vec3::Y) * glam::Vec3::Y - view_dir_tangent;
+
+                let is_total_internal_reflection = (1.0
+                    - (eta_1 / eta_2).powi(2)
+                        * (1.0 + (view_dir_tangent.dot(glam::Vec3::Y)).powi(2)))
+                    < 0.0;
+
+                if is_total_internal_reflection {
+                    let sample = Sample {
+                        sample_dir_tangent: reflect_dir,
+                        bsdf_multiplied_cos_divided_by_pdf: glam::Vec3::ONE,
+                    };
+                    return Some(sample);
+                }
+
+                let cos_theta_i = view_dir_tangent.dot(glam::Vec3::Y);
+                let cos_theta_o = refract_dir.dot(glam::Vec3::NEG_Y);
+                let rho_s = (eta_1 * cos_theta_i - eta_2 * cos_theta_o)
+                    / (eta_1 * cos_theta_i + eta_2 * cos_theta_o);
+                let rho_p = (eta_1 * cos_theta_o - eta_2 * cos_theta_i)
+                    / (eta_1 * cos_theta_o + eta_2 * cos_theta_i);
+                let fresnel = (rho_s.powi(2) + rho_p.powi(2)) / 2.0;
+
+                let uniform = Uniform::new(0.0, 1.0);
+                if uniform.sample(&mut rng) < fresnel {
+                    let sample = Sample {
+                        sample_dir_tangent: reflect_dir,
+                        bsdf_multiplied_cos_divided_by_pdf: glam::Vec3::ONE,
+                    };
+                    return Some(sample);
+                } else {
+                    let sample = Sample {
+                        sample_dir_tangent: refract_dir,
+                        bsdf_multiplied_cos_divided_by_pdf: glam::Vec3::ONE,
+                    };
+                    return Some(sample);
+                }
+            }
+        }
+    }
+
+    fn russian_roulette_probability(&self) -> f32 {
+        match self {
+            Material::Lambert { color } => color.x.max(color.y.max(color.z)),
+            Material::Emissive { .. } => 1.0,
+            Material::Glass { .. } => 1.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -469,7 +628,7 @@ impl Camera {
 
 fn path_trace(mut rng: &mut ThreadRng, ray: &Ray, bvh: &BVH, depth: u32) -> glam::Vec3 {
     const MIN_DEPTH: u32 = 15;
-    const MAX_DEPTH: u32 = 50;
+    const MAX_DEPTH: u32 = 150;
 
     let hit = bvh.traverse(ray);
 
@@ -480,59 +639,59 @@ fn path_trace(mut rng: &mut ThreadRng, ray: &Ray, bvh: &BVH, depth: u32) -> glam
             normal,
             material,
             ..
-        } => match material {
-            Material::Emissive { color, strength } => color * strength,
-            Material::Lambert { color } => {
-                let uniform = Uniform::new(0.0, 1.0);
+        } => {
+            let uniform = Uniform::new(0.0, 1.0);
+            let russian_roulette_probability = if depth <= MIN_DEPTH {
+                1.0
+            } else {
+                material.russian_roulette_probability()
+            };
 
-                let russian_roulette_probability = if depth <= MIN_DEPTH {
-                    1.0
-                } else {
-                    color.x.max(color.y.max(color.z))
-                };
-
-                if depth > MAX_DEPTH {
+            if depth > MAX_DEPTH {
+                return glam::Vec3::ZERO;
+            } else if depth > MIN_DEPTH {
+                if uniform.sample(&mut rng) >= russian_roulette_probability {
                     return glam::Vec3::ZERO;
-                } else if depth > MIN_DEPTH {
-                    if uniform.sample(&mut rng) >= russian_roulette_probability {
-                        return glam::Vec3::ZERO;
-                    }
                 }
+            }
 
-                let normal = if normal.dot(ray.dir) <= 0.0 {
-                    normal
-                } else {
-                    -normal
-                };
+            let (normal, front_hit) = if normal.dot(ray.dir) <= 0.0 {
+                (normal, true)
+            } else {
+                (-normal, false)
+            };
 
-                // cosine-weighted hemisphere sampling
-                let (u1, u2) = (uniform.sample(&mut rng), uniform.sample(&mut rng));
-                let r = u1.sqrt();
-                let phi = 2.0 * std::f32::consts::PI * u2;
-                let sample_dir = glam::Vec3::new(r * phi.cos(), (1.0 - u1).sqrt(), r * phi.sin());
+            let up = if 1.0 - normal.dot(glam::Vec3::Y).abs() < 0.0001 {
+                glam::Vec3::Z
+            } else {
+                glam::Vec3::Y
+            };
 
-                let up = if 1.0 - normal.dot(glam::Vec3::Y).abs() < 0.0001 {
-                    glam::Vec3::Z
-                } else {
-                    glam::Vec3::Y
-                };
+            let tangent_x = normal.cross(up).normalize();
+            let tangent_z = tangent_x.cross(normal).normalize();
+            let tangent_to_world = glam::Mat3::from_cols(tangent_x, normal, tangent_z);
+            let world_to_tangent = tangent_to_world.inverse();
 
-                let tangent_x = normal.cross(up).normalize();
-                let tangent_z = tangent_x.cross(normal).normalize();
-                let sample_dir = glam::Mat3::from_cols(tangent_x, normal, tangent_z)
-                    .mul_vec3(sample_dir)
+            let view_dir_tangent = world_to_tangent.mul_vec3(-ray.dir).normalize();
+
+            if let Some(sample) = material.sample(view_dir_tangent, front_hit, &mut rng) {
+                let sample_dir_world = tangent_to_world
+                    .mul_vec3(sample.sample_dir_tangent)
                     .normalize();
 
                 let ray = Ray {
                     origin: position,
-                    dir: sample_dir,
+                    dir: sample_dir_world,
                 };
 
-                // cosine-weightedなのでLambertのBRDFのPDFのPI/cosθでcosθが打ち消し合う
-                // また、BRDFのkd/PIとPDFのPI/cosθでPIが打ち消し合う
-                color * path_trace(&mut rng, &ray, bvh, depth + 1) / russian_roulette_probability
+                sample.bsdf_multiplied_cos_divided_by_pdf
+                    * path_trace(&mut rng, &ray, bvh, depth + 1)
+                    / (russian_roulette_probability)
+                    + material.emissive()
+            } else {
+                material.emissive()
             }
-        },
+        }
     }
 }
 
@@ -554,46 +713,46 @@ fn main() {
         ),
         (
             "../assets/bunny.obj",
-            Material::Lambert {
-                color: glam::vec3(1.0, 1.0, 1.0),
+            Material::Glass {
+                inner_eta: 1.45,
+                outer_eta: 1.0,
             },
         ),
         (
             "../assets/yuka.obj",
             Material::Lambert {
-                color: glam::vec3(1.0, 1.0, 1.0),
+                color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
             "../assets/migi.obj",
             Material::Lambert {
-                color: glam::vec3(0.0, 1.0, 0.0),
+                color: glam::vec3(0.0, 0.25, 0.0),
             },
         ),
         (
             "../assets/hidari.obj",
             Material::Lambert {
-                color: glam::vec3(1.0, 0.0, 0.0),
+                color: glam::vec3(0.25, 0.0, 0.0),
             },
         ),
         (
             "../assets/tenjou.obj",
             Material::Lambert {
-                color: glam::vec3(1.0, 1.0, 1.0),
+                color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
             "../assets/oku.obj",
             Material::Lambert {
-                color: glam::vec3(1.0, 1.0, 1.0),
+                color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
             "../assets/light.obj",
             Material::Emissive {
                 color: glam::vec3(1.0, 1.0, 1.0),
-                // strength: 5.0,
-                strength: 1.0,
+                strength: 15.0,
             },
         ),
     ];
@@ -620,10 +779,10 @@ fn main() {
         60.0,
     );
 
-    let samples = 1024;
+    let samples = 2_u32.pow(15);
     let width = 800;
     let height = 600;
-    let l_white = 1.0_f32;
+    let l_white = 30.0_f32;
 
     let mut img = ImageBuffer::new(width, height);
 
