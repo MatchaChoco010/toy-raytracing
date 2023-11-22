@@ -2164,6 +2164,9 @@ impl App {
         self.image_available_semaphores = image_available_semaphores;
         self.render_finished_semaphores = render_finished_semaphores;
 
+        // current frameをリセットする
+        self.current_frame = 0;
+
         // dirty flagを解除する
         self.dirty_swapchain = false;
 

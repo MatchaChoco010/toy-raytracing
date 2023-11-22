@@ -21,7 +21,7 @@ void main() {
     gl_RayFlagsOpaqueEXT,
     0xff, // mask
     0, // sbtRecordOffset
-    1, // sbtRecordStride
+    0, // sbtRecordStride
     0, // missIndex
     origin,
     tmin,

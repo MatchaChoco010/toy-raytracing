@@ -30,6 +30,7 @@
 			"rmiss",
 			"SFLOAT",
 			"SRGB",
+			"Strided",
 			"subresource",
 			"swapchain",
 			"tlas",
