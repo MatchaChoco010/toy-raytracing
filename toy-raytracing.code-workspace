@@ -5,18 +5,40 @@
 		},
 		{
 			"path": "00_toy_cpu/toy_cpu"
+		},
+		{
+			"path": "01_hello_vulkan_raytacing/hello_vulkan_raytracing"
 		}
 	],
 	"settings": {
 		"cSpell.words": [
 			"aabb",
+			"blas",
+			"bytemuck",
+			"closesthit",
+			"elwt",
+			"KHRONOS",
 			"lerp",
+			"nonoverlapping",
 			"powf",
+			"raygen",
 			"raytracing",
+			"rchit",
 			"Reinhard",
+			"repr",
+			"rgen",
+			"rmiss",
+			"SFLOAT",
+			"SRGB",
+			"subresource",
+			"swapchain",
+			"tlas",
 			"tmax",
 			"tmin",
-			"tobj"
+			"tobj",
+			"UNORM",
+			"vulkan",
+			"winit"
 		]
 	}
 }
