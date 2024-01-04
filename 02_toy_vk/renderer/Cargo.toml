@@ -1,0 +1,13 @@
+[package]
+name = "renderer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ash.workspace = true
+ashtray = { path = "../ashtray" }
+glam.workspace = true
+gpu-allocator.workspace = true
+pollster = "0.3.0"
+tokio.workspace = true

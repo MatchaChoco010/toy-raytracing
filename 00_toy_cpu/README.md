@@ -2,7 +2,7 @@
 
 cpuでBVH作ってレイトレするやつ。
 
-![output](./toy_cpu/output.png)
+![output](./output.png)
 
 LambertとEmissive、そしてガラスのマテリアルが実装してある。
 

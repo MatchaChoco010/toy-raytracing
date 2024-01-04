@@ -706,50 +706,50 @@ fn main() {
     };
     let models = [
         (
-            "../assets/box.obj",
+            "./assets/box.obj",
             Material::Lambert {
                 color: glam::vec3(1.0, 1.0, 1.0),
             },
         ),
         (
-            "../assets/bunny.obj",
+            "./assets/bunny.obj",
             Material::Glass {
                 inner_eta: 1.45,
                 outer_eta: 1.0,
             },
         ),
         (
-            "../assets/yuka.obj",
+            "./assets/yuka.obj",
             Material::Lambert {
                 color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
-            "../assets/migi.obj",
+            "./assets/migi.obj",
             Material::Lambert {
                 color: glam::vec3(0.0, 0.25, 0.0),
             },
         ),
         (
-            "../assets/hidari.obj",
+            "./assets/hidari.obj",
             Material::Lambert {
                 color: glam::vec3(0.25, 0.0, 0.0),
             },
         ),
         (
-            "../assets/tenjou.obj",
+            "./assets/tenjou.obj",
             Material::Lambert {
                 color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
-            "../assets/oku.obj",
+            "./assets/oku.obj",
             Material::Lambert {
                 color: glam::vec3(0.25, 0.25, 0.25),
             },
         ),
         (
-            "../assets/light.obj",
+            "./assets/light.obj",
             Material::Emissive {
                 color: glam::vec3(1.0, 1.0, 1.0),
                 strength: 15.0,

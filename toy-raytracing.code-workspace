@@ -4,10 +4,16 @@
 			"path": "."
 		},
 		{
-			"path": "00_toy_cpu/toy_cpu"
+			"path": "01_hello_vulkan_raytacing/hello_vulkan_raytracing"
 		},
 		{
-			"path": "01_hello_vulkan_raytacing/hello_vulkan_raytracing"
+			"path": "02_toy_vk/ashtray"
+		},
+		{
+			"path": "02_toy_vk/renderer"
+		},
+		{
+			"path": "02_toy_vk/viewer"
 		}
 	],
 	"settings": {
@@ -16,6 +22,7 @@
 			"blas",
 			"bytemuck",
 			"closesthit",
+			"egui",
 			"elwt",
 			"KHRONOS",
 			"lerp",
@@ -33,6 +40,7 @@
 			"Strided",
 			"subresource",
 			"swapchain",
+			"swapchains",
 			"tlas",
 			"tmax",
 			"tmin",
