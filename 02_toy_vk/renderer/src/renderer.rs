@@ -12,7 +12,7 @@ struct Vertex {
 #[repr(C)]
 struct Material {
     color: [f32; 3],
-    padding: u32,
+    ty: u32,
 }
 
 #[repr(C)]
@@ -49,7 +49,7 @@ pub struct Renderer {
     render_command_buffer: ashtray::CommandBufferHandle,
     in_flight_fence: ashtray::FenceHandle,
 
-    blas: Option<ashtray::utils::BlasObjects>,
+    blas_list: Option<Vec<ashtray::utils::BlasObjects>>,
     tlas: Option<ashtray::utils::TlasObjects>,
     ray_tracing_pipeline: Option<ashtray::RayTracingPipelineHandle>,
     ray_tracing_pipeline_layout: Option<ashtray::PipelineLayoutHandle>,
@@ -252,7 +252,7 @@ impl Renderer {
             images,
             sampler,
 
-            blas: None,
+            blas_list: None,
             tlas: None,
             ray_tracing_pipeline: None,
             ray_tracing_pipeline_layout: None,
@@ -276,46 +276,112 @@ impl Renderer {
         }
     }
 
-    pub fn load_scene(&mut self) {
+    pub fn load_scene(&mut self, scene: &crate::Scene) {
         // blas/tlasの構築
-        let vertices = [
-            Vertex {
-                position: [0.0, -0.5, 0.0],
-                normal: [0.0, 0.0, 1.0],
-            },
-            Vertex {
-                position: [-0.5, 0.5, 0.0],
-                normal: [0.0, 0.0, 1.0],
-            },
-            Vertex {
-                position: [0.5, 0.5, 0.0],
-                normal: [0.0, 0.0, 1.0],
-            },
-        ];
-        let indices: [u32; 3] = [0, 1, 2];
-        let blas = ashtray::utils::cerate_blas(
-            &self.device,
-            &self.queue_handles,
-            &self.compute_command_pool,
-            &self.allocator,
-            &vertices,
-            &indices,
-        );
+        let blas_list = scene
+            .meshes
+            .iter()
+            .map(|mesh| {
+                let (models, _) = tobj::load_obj(&mesh.path, &tobj::GPU_LOAD_OPTIONS).unwrap();
+                let mut vertices = vec![];
+                let model = &models[0];
+                let mesh = &model.mesh;
+                for i in 0..mesh.positions.len() / 3 {
+                    vertices.push(Vertex {
+                        position: [
+                            mesh.positions[i * 3],
+                            mesh.positions[i * 3 + 1],
+                            mesh.positions[i * 3 + 2],
+                        ],
+                        normal: [
+                            mesh.normals[i * 3],
+                            mesh.normals[i * 3 + 1],
+                            mesh.normals[i * 3 + 2],
+                        ],
+                    });
+                }
+                let indices = mesh.indices.clone();
 
-        let instancies = [(blas.clone(), glam::Mat4::IDENTITY, 0)];
-        let materials = [Material {
-            color: [1.0, 0.0, 0.0],
-            padding: 0,
-        }];
+                let blas = ashtray::utils::cerate_blas(
+                    &self.device,
+                    &self.queue_handles,
+                    &self.compute_command_pool,
+                    &self.allocator,
+                    &vertices,
+                    &indices,
+                );
+
+                blas
+            })
+            .collect::<Vec<_>>();
+
+        let materials = scene
+            .materials
+            .iter()
+            .map(|material| Material {
+                color: material.color.into(),
+                ty: material.ty as u32,
+            })
+            .collect::<Vec<_>>();
+
+        let instances = scene
+            .instances
+            .iter()
+            .map(|instance| {
+                let transform = instance.transform;
+                let blas = blas_list[instance.mesh_index].clone();
+                (blas, transform, instance.material_index as u32)
+            })
+            .collect::<Vec<_>>();
+
         let tlas = ashtray::utils::create_tlas(
             &self.device,
             &self.queue_handles,
             &self.compute_command_pool,
             &self.transfer_command_pool,
             &self.allocator,
-            &instancies,
+            &instances,
             &materials,
         );
+
+        // let vertices = [
+        //     Vertex {
+        //         position: [0.0, -0.5, 0.0],
+        //         normal: [0.0, 0.0, 1.0],
+        //     },
+        //     Vertex {
+        //         position: [-0.5, 0.5, 0.0],
+        //         normal: [0.0, 0.0, 1.0],
+        //     },
+        //     Vertex {
+        //         position: [0.5, 0.5, 0.0],
+        //         normal: [0.0, 0.0, 1.0],
+        //     },
+        // ];
+        // let indices: [u32; 3] = [0, 1, 2];
+        // let blas = ashtray::utils::cerate_blas(
+        //     &self.device,
+        //     &self.queue_handles,
+        //     &self.compute_command_pool,
+        //     &self.allocator,
+        //     &vertices,
+        //     &indices,
+        // );
+
+        // let instances = [(blas.clone(), glam::Mat4::IDENTITY, 0)];
+        // let materials = [Material {
+        //     color: [1.0, 0.0, 0.0],
+        //     padding: 0,
+        // }];
+        // let tlas = ashtray::utils::create_tlas(
+        //     &self.device,
+        //     &self.queue_handles,
+        //     &self.compute_command_pool,
+        //     &self.transfer_command_pool,
+        //     &self.allocator,
+        //     &instances,
+        //     &materials,
+        // );
 
         // ray tracing pipelineの作成
         let raygen_shader_module = ashtray::utils::create_shader_module(
@@ -466,7 +532,7 @@ impl Renderer {
             descriptor_set
         };
 
-        self.blas = Some(blas);
+        self.blas_list = Some(blas_list);
         self.tlas = Some(tlas);
         self.ray_tracing_pipeline = Some(ray_tracing_pipeline);
         self.ray_tracing_pipeline_layout = Some(pipeline_layout);

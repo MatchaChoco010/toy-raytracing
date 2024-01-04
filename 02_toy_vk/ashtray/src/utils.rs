@@ -1158,11 +1158,11 @@ pub fn create_tlas<Material>(
     compute_command_pool: &crate::CommandPoolHandle,
     transfer_command_pool: &crate::CommandPoolHandle,
     allocator: &crate::AllocatorHandle,
-    instancies: &[(BlasObjects, glam::Mat4, u32)],
+    instances: &[(BlasObjects, glam::Mat4, u32)],
     materials: &[Material],
 ) -> TlasObjects {
     // instancesを作成
-    let instancies_data = instancies
+    let instances_data = instances
         .iter()
         .map(
             |(blas, transform, _)| vk::AccelerationStructureInstanceKHR {
@@ -1183,11 +1183,11 @@ pub fn create_tlas<Material>(
         )
         .collect::<Vec<_>>();
 
-    // instanciesのbufferを作成
+    // instancesのbufferを作成
     let instances_buffer = create_host_buffer_with_data(
         &device,
         &allocator,
-        &instancies_data,
+        &instances_data,
         vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
             | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
     );
@@ -1213,7 +1213,7 @@ pub fn create_tlas<Material>(
         .src_acceleration_structure(vk::AccelerationStructureKHR::null());
 
     // TLASに必要なバッファサイズを取得
-    let primitive_count = 1;
+    let primitive_count = instances.len() as u32;
     let build_size_info = device.get_acceleration_structure_build_sizes(
         vk::AccelerationStructureBuildTypeKHR::DEVICE,
         &build_geometry_info,
@@ -1321,7 +1321,7 @@ pub fn create_tlas<Material>(
     };
 
     // instance paramのbufferを作成
-    let instance_params = instancies
+    let instance_params = instances
         .iter()
         .map(|(blas, transform, material)| InstanceParam {
             address_index: blas.index_buffer.device_address,

@@ -39,8 +39,8 @@ impl SceneView {
             rotate_y: 0.0,
             rotate_z: 0.0,
             position_x: 0.0,
-            position_y: 0.0,
-            position_z: 2.0,
+            position_y: 2.0,
+            position_z: 5.0,
         }
     }
 
@@ -157,7 +157,7 @@ impl egui::Widget for &mut SceneView {
                 self.position_x.to_radians(),
                 self.position_z.to_radians(),
             )
-            .transform_vector3(glam::Vec3::NEG_Y);
+            .transform_vector3(glam::Vec3::Y);
 
             let position = position
                 + direction_x * response.drag_delta().x / 100.0

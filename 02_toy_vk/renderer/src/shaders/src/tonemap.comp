@@ -14,7 +14,12 @@ void main() {
   if (pixel_coords.x >= dimensions.x || pixel_coords.y >= dimensions.y) {
     return;
   }
-  vec3 color = imageLoad(inputImage, pixel_coords).rgb;
+
+  // Flip the image vertically.
+  ivec2 load_coords = ivec2(pixel_coords.x, dimensions.y - pixel_coords.y - 1);
+
+  // divide color by sample count
+  vec3 color = imageLoad(inputImage, load_coords).rgb;
   if (pushConstants.sample_count > 1) {
     color /= pushConstants.sample_count;
   }

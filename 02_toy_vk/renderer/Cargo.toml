@@ -11,4 +11,5 @@ bytemuck.workspace = true
 glam.workspace = true
 gpu-allocator.workspace = true
 pollster = "0.3.0"
+tobj = "4.0.0"
 tokio.workspace = true

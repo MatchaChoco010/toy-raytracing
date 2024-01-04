@@ -16,7 +16,7 @@ struct InstanceParam {
 
 struct Material {
   vec3 color;
-  uint padding;
+  uint ty;
 };
 
 struct Vertex {
@@ -64,9 +64,18 @@ void main() {
                           barycentricCoords.y * v1.normal +
                           barycentricCoords.z * v2.normal);
   normal = transpose(inverse(mat3(instanceParam.transform))) * normal;
-  normal = transpose(mat3(pushConstants.cameraRotate)) * normal;
 
-  vec3 color = materials[instanceParam.materialIndex].color;
+  Material material = materials[instanceParam.materialIndex];
+
+  vec3 color;
+  if (material.ty == 0) {
+    vec3 l = max(dot(normal, vec3(-1.0, 1.0, 1.0)), 0.0) + vec3(0.1);
+    color = material.color * l;
+  } else if (material.ty == 1) {
+    color = material.color;
+  } else {
+    color = vec3(1.0, 0.0, 0.0);
+  }
 
   hitValue = color;
 }

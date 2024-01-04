@@ -1,5 +1,7 @@
 mod renderer;
 pub use renderer::Renderer;
+mod scene;
+pub use scene::*;
 
 pub struct NextImage {
     pub image_view: ashtray::ImageViewHandle,

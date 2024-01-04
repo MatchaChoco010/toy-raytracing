@@ -36,7 +36,7 @@ void main() {
   d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 
   vec3 origin = pushConstants.cameraTranslate;
-  vec3 direction = normalize(vec3(d.x, d.y, -1.0));
+  vec3 direction = normalize(vec3(d.x, d.y, -2.0));
   direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
   float tmin = 0.001;
   float tmax = 100000.0;
