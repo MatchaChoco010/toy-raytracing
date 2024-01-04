@@ -117,8 +117,9 @@ pub fn select_physical_device(
             .push_next(&mut physical_device_acceleration_structure_feature_khr)
             .build();
         unsafe { instance.get_physical_device_features2(*physical_device, &mut supported_feature) };
-        let is_supported_device_features = supported_feature_vulkan_12.timeline_semaphore
-            == vk::TRUE
+        let is_supported_device_features = supported_feature.features.shader_int64 == vk::TRUE
+            && supported_feature_vulkan_12.timeline_semaphore == vk::TRUE
+            && supported_feature_vulkan_12.scalar_block_layout == vk::TRUE
             && supported_feature_vulkan_13.synchronization2 == vk::TRUE;
 
         is_queue_family_supported
@@ -208,10 +209,12 @@ pub fn create_device(
     }
 
     // physical device features
-    let physical_device_features = vk::PhysicalDeviceFeatures::builder().build();
+    let mut physical_device_features = vk::PhysicalDeviceFeatures::builder().build();
+    physical_device_features.shader_int64 = vk::TRUE;
     let mut physical_device_vulkan_12_features = vk::PhysicalDeviceVulkan12Features::builder()
         .timeline_semaphore(true)
         .buffer_device_address(true)
+        .scalar_block_layout(true)
         .build();
     let mut physical_device_vulkan_13_features = vk::PhysicalDeviceVulkan13Features::builder()
         .synchronization2(true)
@@ -714,6 +717,7 @@ pub fn create_sampler(device: &crate::DeviceHandle) -> crate::SamplerHandle {
     device.create_sampler(&create_info)
 }
 
+#[derive(Clone)]
 pub struct BufferObjects {
     pub buffer: crate::BufferHandle,
     pub allocation: crate::AllocationHandle,
@@ -837,6 +841,75 @@ pub fn create_device_local_buffer(
     }
 }
 
+pub fn create_device_local_buffer_with_data<T>(
+    device: &crate::DeviceHandle,
+    queue_handles: &QueueHandles,
+    transfer_command_pool: &crate::CommandPoolHandle,
+    allocator: &crate::AllocatorHandle,
+    data: &[T],
+    usage: vk::BufferUsageFlags,
+) -> BufferObjects {
+    let buffer_size = (std::mem::size_of::<T>() * data.len()) as u64;
+
+    let buffer_create_info = vk::BufferCreateInfo::builder()
+        .size(buffer_size)
+        .usage(usage | vk::BufferUsageFlags::TRANSFER_DST);
+    let buffer = device.create_buffer(&buffer_create_info);
+
+    // bufferのメモリ確保
+    let buffer_memory_requirement = buffer.get_buffer_memory_requirements();
+    let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+        name: "device local buffer",
+        requirements: buffer_memory_requirement,
+        location: gpu_allocator::MemoryLocation::GpuOnly,
+        linear: true,
+        allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
+    });
+
+    // bufferとメモリのバインド
+    buffer.bind_buffer_memory(allocation.memory(), allocation.offset());
+
+    // device addressの取得
+    let device_address =
+        device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::builder().buffer(*buffer));
+
+    // staging bufferの作成
+    let staging_buffer = create_host_buffer_with_data(
+        device,
+        allocator,
+        data,
+        usage | vk::BufferUsageFlags::TRANSFER_SRC,
+    );
+
+    // bufferのコピー
+    let fence = create_fence(device);
+    let command_buffer = &allocate_command_buffers(device, transfer_command_pool, 1)[0];
+    begin_onetime_command_buffer(&command_buffer);
+    command_buffer.cmd_copy_buffer(
+        &staging_buffer.buffer,
+        &buffer,
+        std::slice::from_ref(&vk::BufferCopy::builder().size(buffer_size)),
+    );
+    command_buffer.end_command_buffer();
+    device.queue_submit(
+        queue_handles.transfer.queue,
+        std::slice::from_ref(
+            &vk::SubmitInfo::builder()
+                .command_buffers(&[**command_buffer])
+                .wait_dst_stage_mask(&[])
+                .wait_semaphores(&[]),
+        ),
+        Some(fence.clone()),
+    );
+    device.wait_fences(&[fence], u64::MAX);
+
+    BufferObjects {
+        buffer,
+        allocation,
+        device_address,
+    }
+}
+
 pub fn create_shader_module(
     device: &crate::DeviceHandle,
     bytes: &[u8],
@@ -889,14 +962,22 @@ pub fn create_signaled_fence(device: &crate::DeviceHandle) -> crate::FenceHandle
     device.create_fence(&create_info)
 }
 
+#[derive(Clone)]
+pub struct BlasObjects {
+    pub blas: crate::AccelerationStructureHandle,
+    pub blas_buffer: BufferObjects,
+    pub vertex_buffer: BufferObjects,
+    pub index_buffer: BufferObjects,
+}
+
 pub fn cerate_blas<T>(
     device: &crate::DeviceHandle,
     queue_handles: &QueueHandles,
-    graphics_command_pool: &crate::CommandPoolHandle,
+    compute_command_pool: &crate::CommandPoolHandle,
     allocator: &crate::AllocatorHandle,
     vertices: &[T],
     indices: &[u32],
-) -> (crate::AccelerationStructureHandle, BufferObjects) {
+) -> BlasObjects {
     let vertex_buffer = create_host_buffer_with_data(
         &device,
         &allocator,
@@ -1000,11 +1081,11 @@ pub fn cerate_blas<T>(
         // コマンドバッファの開始
         let command_buffer = {
             let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(**graphics_command_pool)
+                .command_pool(**compute_command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1);
             let command_buffers = device
-                .allocate_command_buffers(&graphics_command_pool, &command_buffer_allocate_info);
+                .allocate_command_buffers(&compute_command_pool, &command_buffer_allocate_info);
             command_buffers.into_iter().next().unwrap()
         };
         begin_onetime_command_buffer(&command_buffer);
@@ -1037,31 +1118,54 @@ pub fn cerate_blas<T>(
             .build();
         let fence = create_fence(&device);
         device.queue_submit(
-            queue_handles.graphics.queue,
+            queue_handles.compute.queue,
             &[submit_info],
             Some(fence.clone()),
         );
         device.wait_fences(&[fence], u64::MAX);
 
-        (blas, blas_buffer)
+        BlasObjects {
+            blas,
+            blas_buffer,
+            vertex_buffer,
+            index_buffer,
+        }
     }
 }
 
-pub fn create_tlas(
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct InstanceParam {
+    pub address_index: u64,
+    pub address_vertex: u64,
+    pub transform: glam::Mat4,
+    pub material_index: u32,
+    pub padding_1: u32,
+    pub padding_2: u64,
+}
+
+#[derive(Clone)]
+pub struct TlasObjects {
+    pub tlas: crate::AccelerationStructureHandle,
+    pub tlas_buffer: BufferObjects,
+    pub instance_params_buffer: BufferObjects,
+    pub materials_buffer: BufferObjects,
+}
+
+pub fn create_tlas<Material>(
     device: &crate::DeviceHandle,
     queue_handles: &QueueHandles,
-    graphics_command_pool: &crate::CommandPoolHandle,
+    compute_command_pool: &crate::CommandPoolHandle,
+    transfer_command_pool: &crate::CommandPoolHandle,
     allocator: &crate::AllocatorHandle,
-    instancies: &[(crate::AccelerationStructureHandle, glam::Mat4)],
-) -> (
-    crate::AccelerationStructureHandle,
-    crate::utils::BufferObjects,
-) {
+    instancies: &[(BlasObjects, glam::Mat4, u32)],
+    materials: &[Material],
+) -> TlasObjects {
     // instancesを作成
     let instancies_data = instancies
         .iter()
         .map(
-            |(acceleration_structure, transform)| vk::AccelerationStructureInstanceKHR {
+            |(blas, transform, _)| vk::AccelerationStructureInstanceKHR {
                 transform: vk::TransformMatrixKHR {
                     matrix: transform.transpose().to_cols_array()[..12]
                         .try_into()
@@ -1073,8 +1177,7 @@ pub fn create_tlas(
                 ),
                 instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xFF),
                 acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                    device_handle: acceleration_structure
-                        .get_acceleration_structure_device_address(),
+                    device_handle: blas.blas.get_acceleration_structure_device_address(),
                 },
             },
         )
@@ -1145,7 +1248,7 @@ pub fn create_tlas(
     );
 
     // acceleration structureのビルドコマンド実行
-    {
+    let (tlas, tlas_buffer) = {
         // build用にbuild geometry infoを作成
         let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .geometries(std::slice::from_ref(&geometry))
@@ -1173,11 +1276,11 @@ pub fn create_tlas(
         // コマンドバッファの開始
         let command_buffer = {
             let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(**graphics_command_pool)
+                .command_pool(**compute_command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1);
             let command_buffers = device
-                .allocate_command_buffers(&graphics_command_pool, &command_buffer_allocate_info);
+                .allocate_command_buffers(&compute_command_pool, &command_buffer_allocate_info);
             command_buffers.into_iter().next().unwrap()
         };
         begin_onetime_command_buffer(&command_buffer);
@@ -1208,13 +1311,51 @@ pub fn create_tlas(
             .build();
         let fence = create_fence(&device);
         device.queue_submit(
-            queue_handles.graphics.queue,
+            queue_handles.compute.queue,
             &[submit_info],
             Some(fence.clone()),
         );
         device.wait_fences(&[fence], u64::MAX);
 
         (tlas, tlas_buffer)
+    };
+
+    // instance paramのbufferを作成
+    let instance_params = instancies
+        .iter()
+        .map(|(blas, transform, material)| InstanceParam {
+            address_index: blas.index_buffer.device_address,
+            address_vertex: blas.vertex_buffer.device_address,
+            transform: transform.clone(),
+            material_index: *material,
+            padding_1: 0,
+            padding_2: 0,
+        })
+        .collect::<Vec<_>>();
+    let instance_params_buffer = create_device_local_buffer_with_data(
+        &device,
+        &queue_handles,
+        &transfer_command_pool,
+        &allocator,
+        &instance_params,
+        vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+    );
+
+    // materialのbufferを作成
+    let materials_buffer = create_device_local_buffer_with_data(
+        &device,
+        &queue_handles,
+        &transfer_command_pool,
+        &allocator,
+        &materials,
+        vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+    );
+
+    TlasObjects {
+        tlas,
+        tlas_buffer,
+        instance_params_buffer,
+        materials_buffer,
     }
 }
 
@@ -1249,9 +1390,23 @@ pub fn create_ray_tracing_pipelines(
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR);
 
+        let layout_instance_params = vk::DescriptorSetLayoutBinding::builder()
+            .binding(2)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::ANY_HIT_KHR | vk::ShaderStageFlags::CLOSEST_HIT_KHR);
+
+        let layout_materials = vk::DescriptorSetLayoutBinding::builder()
+            .binding(3)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::ANY_HIT_KHR | vk::ShaderStageFlags::CLOSEST_HIT_KHR);
+
         let bindings = [
             layout_acceleration_structure.build(),
             layout_storage_image.build(),
+            layout_instance_params.build(),
+            layout_materials.build(),
         ];
 
         let descriptor_set_layout_create_info =

@@ -6,6 +6,13 @@ use crate::NextImage;
 #[repr(C)]
 struct Vertex {
     position: [f32; 3],
+    normal: [f32; 3],
+}
+
+#[repr(C)]
+struct Material {
+    color: [f32; 3],
+    padding: u32,
 }
 
 #[repr(C)]
@@ -31,7 +38,8 @@ pub struct Renderer {
     physical_device: vk::PhysicalDevice,
     device: ashtray::DeviceHandle,
     queue_handles: ashtray::utils::QueueHandles,
-    graphics_command_pool: ashtray::CommandPoolHandle,
+    transfer_command_pool: ashtray::CommandPoolHandle,
+    compute_command_pool: ashtray::CommandPoolHandle,
     transfer_command_buffer: ashtray::CommandBufferHandle,
     allocator: ashtray::AllocatorHandle,
     storage_image: ashtray::utils::ImageHandles,
@@ -41,10 +49,8 @@ pub struct Renderer {
     render_command_buffer: ashtray::CommandBufferHandle,
     in_flight_fence: ashtray::FenceHandle,
 
-    blas: Option<ashtray::AccelerationStructureHandle>,
-    blas_buffer: Option<ashtray::utils::BufferObjects>,
-    tlas: Option<ashtray::AccelerationStructureHandle>,
-    tlas_buffer: Option<ashtray::utils::BufferObjects>,
+    blas: Option<ashtray::utils::BlasObjects>,
+    tlas: Option<ashtray::utils::TlasObjects>,
     ray_tracing_pipeline: Option<ashtray::RayTracingPipelineHandle>,
     ray_tracing_pipeline_layout: Option<ashtray::PipelineLayoutHandle>,
     ray_tracing_descriptor_set_layout: Option<ashtray::DescriptorSetLayoutHandle>,
@@ -75,6 +81,8 @@ impl Renderer {
     ) -> Self {
         let transfer_command_pool =
             ashtray::utils::create_transfer_command_pool(&device, &queue_handles);
+        let compute_command_pool =
+            ashtray::utils::create_compute_command_pool(&device, &queue_handles);
         let transfer_command_buffer =
             ashtray::utils::allocate_command_buffers(&device, &transfer_command_pool, 1)
                 .into_iter()
@@ -236,7 +244,8 @@ impl Renderer {
             physical_device,
             device,
             queue_handles,
-            graphics_command_pool,
+            transfer_command_pool,
+            compute_command_pool,
             transfer_command_buffer,
             allocator,
             storage_image,
@@ -244,9 +253,7 @@ impl Renderer {
             sampler,
 
             blas: None,
-            blas_buffer: None,
             tlas: None,
-            tlas_buffer: None,
             ray_tracing_pipeline: None,
             ray_tracing_pipeline_layout: None,
             ray_tracing_descriptor_set_layout: None,
@@ -274,31 +281,40 @@ impl Renderer {
         let vertices = [
             Vertex {
                 position: [0.0, -0.5, 0.0],
+                normal: [0.0, 0.0, 1.0],
             },
             Vertex {
                 position: [-0.5, 0.5, 0.0],
+                normal: [0.0, 0.0, 1.0],
             },
             Vertex {
                 position: [0.5, 0.5, 0.0],
+                normal: [0.0, 0.0, 1.0],
             },
         ];
         let indices: [u32; 3] = [0, 1, 2];
-        let (blas, blas_buffer) = ashtray::utils::cerate_blas(
+        let blas = ashtray::utils::cerate_blas(
             &self.device,
             &self.queue_handles,
-            &self.graphics_command_pool,
+            &self.compute_command_pool,
             &self.allocator,
             &vertices,
             &indices,
         );
 
-        let instancies = [(blas.clone(), glam::Mat4::IDENTITY)];
-        let (tlas, tlas_buffer) = ashtray::utils::create_tlas(
+        let instancies = [(blas.clone(), glam::Mat4::IDENTITY, 0)];
+        let materials = [Material {
+            color: [1.0, 0.0, 0.0],
+            padding: 0,
+        }];
+        let tlas = ashtray::utils::create_tlas(
             &self.device,
             &self.queue_handles,
-            &self.graphics_command_pool,
+            &self.compute_command_pool,
+            &self.transfer_command_pool,
             &self.allocator,
             &instancies,
+            &materials,
         );
 
         // ray tracing pipelineの作成
@@ -325,7 +341,12 @@ impl Renderer {
                     intersection: None,
                 }],
                 &[vk::PushConstantRange::builder()
-                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                    .stage_flags(
+                        vk::ShaderStageFlags::RAYGEN_KHR
+                            | vk::ShaderStageFlags::ANY_HIT_KHR
+                            | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                            | vk::ShaderStageFlags::MISS_KHR,
+                    )
                     .offset(0)
                     .size(std::mem::size_of::<PushConstants>() as u32)
                     .build()],
@@ -351,9 +372,17 @@ impl Renderer {
             let descriptor_pool_size_storage_image = vk::DescriptorPoolSize::builder()
                 .ty(vk::DescriptorType::STORAGE_IMAGE)
                 .descriptor_count(1);
+            let descriptor_pool_size_instance_params = vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1);
+            let descriptor_pool_size_materials = vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1);
             let descriptor_pool_sizes = [
                 descriptor_pool_size_acceleration_structure.build(),
                 descriptor_pool_size_storage_image.build(),
+                descriptor_pool_size_instance_params.build(),
+                descriptor_pool_size_materials.build(),
             ];
 
             let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
@@ -385,7 +414,7 @@ impl Renderer {
             // acceleration structureの書き込み
             let mut descriptor_acceleration_structure_info =
                 vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                    .acceleration_structures(std::slice::from_ref(&tlas));
+                    .acceleration_structures(std::slice::from_ref(&tlas.tlas));
             let mut acceleration_structure_write = vk::WriteDescriptorSet::builder()
                 .dst_set(*descriptor_set)
                 .dst_binding(0)
@@ -403,10 +432,34 @@ impl Renderer {
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .image_info(std::slice::from_ref(&storage_image_info));
 
+            // instance paramsの書き込み
+            let instance_params_info = vk::DescriptorBufferInfo::builder()
+                .buffer(*tlas.instance_params_buffer.buffer)
+                .offset(0)
+                .range(vk::WHOLE_SIZE);
+            let instance_params_write = vk::WriteDescriptorSet::builder()
+                .dst_set(*descriptor_set)
+                .dst_binding(2)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(std::slice::from_ref(&instance_params_info));
+
+            // materialsの書き込み
+            let materials_info = vk::DescriptorBufferInfo::builder()
+                .buffer(*tlas.materials_buffer.buffer)
+                .offset(0)
+                .range(vk::WHOLE_SIZE);
+            let materials_write = vk::WriteDescriptorSet::builder()
+                .dst_set(*descriptor_set)
+                .dst_binding(3)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(std::slice::from_ref(&materials_info));
+
             // descriptor setの更新
             let descriptor_writes = [
                 acceleration_structure_write.build(),
                 storage_image_write.build(),
+                instance_params_write.build(),
+                materials_write.build(),
             ];
             self.device.update_descriptor_sets(&descriptor_writes);
 
@@ -414,9 +467,7 @@ impl Renderer {
         };
 
         self.blas = Some(blas);
-        self.blas_buffer = Some(blas_buffer);
         self.tlas = Some(tlas);
-        self.tlas_buffer = Some(tlas_buffer);
         self.ray_tracing_pipeline = Some(ray_tracing_pipeline);
         self.ray_tracing_pipeline_layout = Some(pipeline_layout);
         self.ray_tracing_descriptor_set_layout = Some(descriptor_set_layout);
@@ -642,7 +693,10 @@ impl Renderer {
 
         command_buffer.cmd_push_constants(
             ray_tracing_pipeline_layout,
-            vk::ShaderStageFlags::RAYGEN_KHR,
+            vk::ShaderStageFlags::RAYGEN_KHR
+                | vk::ShaderStageFlags::ANY_HIT_KHR
+                | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                | vk::ShaderStageFlags::MISS_KHR,
             0,
             &[PushConstants {
                 camera_rotate: glam::Mat4::from_euler(

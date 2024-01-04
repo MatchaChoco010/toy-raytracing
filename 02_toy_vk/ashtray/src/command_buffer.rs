@@ -112,6 +112,22 @@ impl CommandBufferHandle {
         }
     }
 
+    pub fn cmd_copy_buffer(
+        &self,
+        src_buffer: &crate::BufferHandle,
+        dst_buffer: &crate::BufferHandle,
+        regions: &[vk::BufferCopy],
+    ) {
+        unsafe {
+            self.data().device.cmd_copy_buffer(
+                self.command_buffer_raw(),
+                **src_buffer,
+                **dst_buffer,
+                regions,
+            )
+        }
+    }
+
     pub fn cmd_pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         unsafe {
             self.data()
