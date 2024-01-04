@@ -13,7 +13,7 @@ struct Vertex {
 struct PushConstants {
     camera_rotate: glam::Mat4,
     camera_translate: glam::Vec3,
-    aspect_ratio: f32,
+    seed: u32,
 }
 
 pub struct Renderer {
@@ -656,7 +656,7 @@ impl Renderer {
                     self.position_y,
                     self.position_z,
                 ),
-                aspect_ratio: self.width as f32 / self.height as f32,
+                seed: self.sample_count as u32,
             }],
         );
 

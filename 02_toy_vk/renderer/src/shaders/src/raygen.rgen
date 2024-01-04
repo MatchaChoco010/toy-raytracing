@@ -9,15 +9,31 @@ layout(binding = 1, set = 0, rgba8) uniform image2D image;
 layout(push_constant) uniform PushConstants {
   mat4 cameraRotate;
   vec3 cameraTranslate;
-  float aspectRatio;
+  uint seed;
 }
 pushConstants;
 
+uint seed;
+uint PCGHash() {
+  seed = seed * 747796405u + 2891336453u;
+  uint state = seed;
+  uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+float rnd1() { return PCGHash() / float(0xFFFFFFFFU); }
+
+vec2 rnd2() { return vec2(rnd1(), rnd1()); }
+
 void main() {
+  seed = pushConstants.seed + gl_LaunchIDEXT.x +
+         gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y;
+
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-  const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+  vec2 delta = rnd2() - vec2(0.5);
+  vec2 inUV = (pixelCenter + delta) / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
-  d.x *= pushConstants.aspectRatio;
+  d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 
   vec3 origin = pushConstants.cameraTranslate;
   vec3 direction = normalize(vec3(d.x, d.y, -1.0));
