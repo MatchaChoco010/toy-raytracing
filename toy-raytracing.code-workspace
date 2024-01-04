@@ -4,9 +4,6 @@
 			"path": "."
 		},
 		{
-			"path": "01_hello_vulkan_raytacing/hello_vulkan_raytracing"
-		},
-		{
 			"path": "02_toy_vk/ashtray"
 		},
 		{

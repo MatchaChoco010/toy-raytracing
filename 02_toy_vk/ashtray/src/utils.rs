@@ -1229,6 +1229,7 @@ pub fn create_ray_tracing_pipelines(
     raygen_shader_modules: &[crate::ShaderModuleHandle],
     miss_shader_modules: &[crate::ShaderModuleHandle],
     hit_shader_modules: &[HitShaderModules],
+    push_constant_ranges: &[vk::PushConstantRange],
 ) -> (
     crate::RayTracingPipelineHandle,
     crate::PipelineLayoutHandle,
@@ -1265,7 +1266,8 @@ pub fn create_ray_tracing_pipelines(
     // pipeline layoutを作成
     let pipeline_layout = {
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout));
+            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+            .push_constant_ranges(push_constant_ranges);
 
         let pipeline_layout =
             device.create_pipeline_layout(&descriptor_set_layout, &pipeline_layout_create_info);

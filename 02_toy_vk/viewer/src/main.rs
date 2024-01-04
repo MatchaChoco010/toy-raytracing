@@ -72,12 +72,47 @@ impl App for Viewer {
         });
         egui::Window::new("Stats").show(ctx, |ui| {
             ui.label(format!("sample_count: {}", self.scene_view.sample_count));
+            ui.label(format!(
+                "size: {}x{}",
+                self.scene_view.width, self.scene_view.height
+            ));
         });
         egui::Window::new("Parameters").show(ctx, |ui| {
-            ui.label("max_sample_count");
-            ui.add(egui::widgets::DragValue::new(
-                &mut self.scene_view.max_sample_count,
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("max_sample_count: ");
+                ui.add(egui::widgets::DragValue::new(
+                    &mut self.scene_view.max_sample_count,
+                ));
+            });
+            ui.add(egui::widgets::Checkbox::new(
+                &mut self.scene_view.fit_view,
+                "fit view",
             ));
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("size: ");
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.width));
+                ui.label("x");
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.height));
+            });
+
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("camera position: ");
+                ui.add(egui::widgets::DragValue::new(
+                    &mut self.scene_view.position_x,
+                ));
+                ui.add(egui::widgets::DragValue::new(
+                    &mut self.scene_view.position_y,
+                ));
+                ui.add(egui::widgets::DragValue::new(
+                    &mut self.scene_view.position_z,
+                ));
+            });
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("camera rotate: ");
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_x));
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_y));
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_z));
+            });
         });
     }
 

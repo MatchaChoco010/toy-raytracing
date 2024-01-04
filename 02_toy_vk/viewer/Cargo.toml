@@ -9,6 +9,7 @@ ash.workspace = true
 ashtray = { path = "../ashtray" }
 egui = "0.24.1"
 egui-ash = { version = "0.2.0", features = ["gpu-allocator"], path = "../../../egui-ash" }
+glam.workspace = true
 gpu-allocator.workspace = true
 renderer = { path = "../renderer" }
 tokio.workspace = true

@@ -1,4 +1,5 @@
 use ash::vk;
+use bytemuck;
 
 use crate::NextImage;
 
@@ -7,10 +8,24 @@ struct Vertex {
     position: [f32; 3],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct PushConstants {
+    camera_rotate: glam::Mat4,
+    camera_translate: glam::Vec3,
+    aspect_ratio: f32,
+}
+
 pub struct Renderer {
     width: u32,
     height: u32,
     max_sample_count: u32,
+    rotate_x: f32,
+    rotate_y: f32,
+    rotate_z: f32,
+    position_x: f32,
+    position_y: f32,
+    position_z: f32,
 
     instance: ashtray::InstanceHandle,
     physical_device: vk::PhysicalDevice,
@@ -210,6 +225,12 @@ impl Renderer {
             width,
             height,
             max_sample_count: 256,
+            rotate_x: 0.0,
+            rotate_y: 0.0,
+            rotate_z: 0.0,
+            position_x: 0.0,
+            position_y: 0.0,
+            position_z: 0.0,
 
             instance,
             physical_device,
@@ -303,6 +324,11 @@ impl Renderer {
                     any_hit: None,
                     intersection: None,
                 }],
+                &[vk::PushConstantRange::builder()
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                    .offset(0)
+                    .size(std::mem::size_of::<PushConstants>() as u32)
+                    .build()],
             );
 
         // shader binding tableの作成
@@ -406,6 +432,12 @@ impl Renderer {
             self.height = parameters.height;
             self.max_sample_count = parameters.max_sample_count;
             self.sample_count = 0;
+            self.rotate_x = parameters.rotate_x;
+            self.rotate_y = parameters.rotate_y;
+            self.rotate_z = parameters.rotate_z;
+            self.position_x = parameters.position_x;
+            self.position_y = parameters.position_y;
+            self.position_z = parameters.position_z;
 
             self.device.wait_idle();
 
@@ -511,10 +543,23 @@ impl Renderer {
                         .build(),
                 ]);
             }
-        } else if self.max_sample_count != parameters.max_sample_count {
+        } else if self.max_sample_count != parameters.max_sample_count
+            || self.rotate_x != parameters.rotate_x
+            || self.rotate_y != parameters.rotate_y
+            || self.rotate_z != parameters.rotate_z
+            || self.position_x != parameters.position_x
+            || self.position_y != parameters.position_y
+            || self.position_z != parameters.position_z
+        {
             // そうでなくてdirtyなら蓄積をリセットするコマンドを発行する。
             self.max_sample_count = parameters.max_sample_count;
             self.sample_count = 0;
+            self.rotate_x = parameters.rotate_x;
+            self.rotate_y = parameters.rotate_y;
+            self.rotate_z = parameters.rotate_z;
+            self.position_x = parameters.position_x;
+            self.position_y = parameters.position_y;
+            self.position_z = parameters.position_z;
 
             let command_buffer = self.render_command_buffer.clone();
             command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
@@ -593,6 +638,26 @@ impl Renderer {
             0,
             &[descriptor_set],
             &[],
+        );
+
+        command_buffer.cmd_push_constants(
+            ray_tracing_pipeline_layout,
+            vk::ShaderStageFlags::RAYGEN_KHR,
+            0,
+            &[PushConstants {
+                camera_rotate: glam::Mat4::from_euler(
+                    glam::EulerRot::YXZ,
+                    self.rotate_y.to_radians(),
+                    self.rotate_x.to_radians(),
+                    self.rotate_z.to_radians(),
+                ),
+                camera_translate: glam::Vec3::new(
+                    self.position_x,
+                    self.position_y,
+                    self.position_z,
+                ),
+                aspect_ratio: self.width as f32 / self.height as f32,
+            }],
         );
 
         // ray tracingの実行
