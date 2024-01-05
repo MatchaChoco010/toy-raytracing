@@ -173,7 +173,7 @@ impl egui::Widget for &mut SceneView {
             self.position_z = position.z;
         }
         let scroll_delta = ui.input(|i| i.scroll_delta);
-        if scroll_delta.y != 0.0 {
+        if scroll_delta.y != 0.0 && response.hovered() {
             let position = glam::vec3(self.position_x, self.position_y, self.position_z);
             let direction = glam::Mat4::from_euler(
                 glam::EulerRot::YXZ,
