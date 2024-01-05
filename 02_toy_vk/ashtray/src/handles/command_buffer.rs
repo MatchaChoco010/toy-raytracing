@@ -65,8 +65,9 @@ impl CommandBufferHandle {
         ptrs.into_iter().map(|ptr| Self { ptr }).collect()
     }
 
-    // command bufferの各関数
+    // CommandBufferの関数
 
+    /// CommandBufferを開始する
     pub fn begin_command_buffer(&self, begin_info: &vk::CommandBufferBeginInfo) {
         unsafe {
             self.data()
@@ -76,6 +77,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// CommandBufferを終了する
     pub fn end_command_buffer(&self) {
         unsafe {
             self.data()
@@ -85,6 +87,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// CommandBufferをリセットする
     pub fn reset_command_buffer(&self, flags: vk::CommandBufferResetFlags) {
         unsafe {
             self.data()
@@ -94,6 +97,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// clear color imageコマンドを積む
     pub fn cmd_clear_color_image(
         &self,
         image: &vk::Image,
@@ -112,6 +116,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// copy bufferコマンドを積む
     pub fn cmd_copy_buffer(
         &self,
         src_buffer: &crate::BufferHandle,
@@ -128,6 +133,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// pipeline barrier2コマンドを積む
     pub fn cmd_pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         unsafe {
             self.data()
@@ -136,6 +142,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// ComputePipelineHandleをbindするコマンドを積む
     pub fn cmd_bind_compute_pipeline(&self, compute_pipeline: &crate::ComputePipelineHandle) {
         unsafe {
             self.data().device.cmd_bind_pipeline(
@@ -146,6 +153,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// RayTracingPipelineHandleをbindするコマンドを積む
     pub fn cmd_bind_ray_tracing_pipeline(
         &self,
         ray_tracing_pipeline: &crate::RayTracingPipelineHandle,
@@ -159,6 +167,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// DescriptorSetHandleをbindするコマンドを積む
     pub fn cmd_bind_descriptor_sets(
         &self,
         pipeline_bind_point: vk::PipelineBindPoint,
@@ -183,6 +192,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// Dispatchコマンドを積む
     pub fn cmd_dispatch(&self, x: u32, y: u32, z: u32) {
         unsafe {
             self.data()
@@ -191,6 +201,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// PushConstantsを積むコマンドを積む
     pub fn cmd_push_constants<T: bytemuck::Pod>(
         &self,
         pipeline_layout: &crate::PipelineLayoutHandle,
@@ -209,6 +220,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// acceleration structureを構築するコマンドを積む
     pub fn cmd_build_acceleration_structures(
         &self,
         build_infos: &[vk::AccelerationStructureBuildGeometryInfoKHR],
@@ -226,6 +238,7 @@ impl CommandBufferHandle {
         }
     }
 
+    /// RayTracingを起動するコマンドを積む
     pub fn cmd_trace_rays(
         &self,
         raygen_shader_binding_table_entry: &vk::StridedDeviceAddressRegionKHR,
@@ -255,10 +268,15 @@ impl CommandBufferHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// vk::CommandBufferを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::CommandBufferは無効になる。
     pub unsafe fn command_buffer_raw(&self) -> vk::CommandBuffer {
         self.data().command_buffer.clone()
     }

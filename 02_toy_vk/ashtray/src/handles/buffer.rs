@@ -43,8 +43,9 @@ impl BufferHandle {
         Self { ptr }
     }
 
-    // bufferの各関数
+    // Bufferの関数
 
+    /// Bufferのメモリ要件を取得する
     pub fn get_buffer_memory_requirements(&self) -> vk::MemoryRequirements {
         unsafe {
             self.data()
@@ -53,6 +54,7 @@ impl BufferHandle {
         }
     }
 
+    /// Bufferのメモリバインドを行う
     pub fn bind_buffer_memory(&self, device_memory: vk::DeviceMemory, offset: u64) {
         unsafe {
             self.data()
@@ -64,10 +66,15 @@ impl BufferHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// vk::Bufferを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::Bufferは無効になる。
     pub unsafe fn buffer_raw(&self) -> vk::Buffer {
         self.data().buffer.clone()
     }

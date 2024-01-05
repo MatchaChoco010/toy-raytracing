@@ -71,8 +71,11 @@ impl DeviceHandle {
         Ok(Self { ptr })
     }
 
+    // Deviceの関数
+
     // create系
 
+    /// SwapchainHandleを作成する
     pub fn create_swapchain(
         &self,
         surface: &crate::SurfaceHandle,
@@ -81,6 +84,7 @@ impl DeviceHandle {
         crate::SwapchainHandle::new(self.clone(), surface.clone(), swapchain_create_info)
     }
 
+    /// CommandPoolHandleを作成する
     pub fn create_command_pool(
         &self,
         command_pool_create_info: &vk::CommandPoolCreateInfo,
@@ -88,6 +92,7 @@ impl DeviceHandle {
         crate::CommandPoolHandle::new(self.clone(), command_pool_create_info)
     }
 
+    /// CommandBufferHandleを割り当てる
     pub fn allocate_command_buffers(
         &self,
         command_pool_handle: &crate::CommandPoolHandle,
@@ -100,6 +105,7 @@ impl DeviceHandle {
         )
     }
 
+    /// AllocatorHandleを作成する
     pub fn create_allocator(
         &self,
         allocator_create_desc: &gpu_allocator::vulkan::AllocatorCreateDesc,
@@ -107,10 +113,12 @@ impl DeviceHandle {
         crate::AllocatorHandle::new(self.clone(), allocator_create_desc)
     }
 
+    /// ImageHandleを作成する
     pub fn create_image(&self, image_create_info: &vk::ImageCreateInfo) -> crate::ImageHandle {
         crate::ImageHandle::new(self.clone(), image_create_info)
     }
 
+    /// SamplerHandleを作成する
     pub fn create_sampler(
         &self,
         sampler_create_info: &vk::SamplerCreateInfo,
@@ -118,10 +126,12 @@ impl DeviceHandle {
         crate::SamplerHandle::new(self.clone(), sampler_create_info)
     }
 
+    /// BufferHandleを作成する
     pub fn create_buffer(&self, buffer_create_info: &vk::BufferCreateInfo) -> crate::BufferHandle {
         crate::BufferHandle::new(self.clone(), buffer_create_info)
     }
 
+    /// ShaderModuleHandleを作成する
     pub fn create_shader_module(
         &self,
         shader_module_create_info: &vk::ShaderModuleCreateInfo,
@@ -129,6 +139,7 @@ impl DeviceHandle {
         crate::ShaderModuleHandle::new(self.clone(), shader_module_create_info)
     }
 
+    /// DescriptorPoolHandleを作成する
     pub fn create_descriptor_pool(
         &self,
         descriptor_pool_create_info: &vk::DescriptorPoolCreateInfo,
@@ -136,6 +147,7 @@ impl DeviceHandle {
         crate::DescriptorPoolHandle::new(self.clone(), descriptor_pool_create_info)
     }
 
+    /// DescriptorSetLayoutHandleを作成する
     pub fn create_descriptor_set_layout(
         &self,
         descriptor_set_layout_create_info: &vk::DescriptorSetLayoutCreateInfo,
@@ -143,6 +155,7 @@ impl DeviceHandle {
         crate::DescriptorSetLayoutHandle::new(self.clone(), descriptor_set_layout_create_info)
     }
 
+    /// DescriptorSetHandleを割り当てる
     pub fn allocate_descriptor_sets(
         &self,
         descriptor_pool_handle: &crate::DescriptorPoolHandle,
@@ -157,6 +170,7 @@ impl DeviceHandle {
         )
     }
 
+    /// PipelineLayoutHandleを作成する
     pub fn create_pipeline_layout(
         &self,
         descriptor_set_layout_handle: &crate::DescriptorSetLayoutHandle,
@@ -169,6 +183,7 @@ impl DeviceHandle {
         )
     }
 
+    /// ComputePipelineHandleを作成する
     pub fn create_compute_pipelines(
         &self,
         pipeline_cache: vk::PipelineCache,
@@ -183,6 +198,7 @@ impl DeviceHandle {
         )
     }
 
+    /// RayTracingPipelineHandleを作成する
     pub fn create_ray_tracing_pipelines(
         &self,
         deferred_operation: vk::DeferredOperationKHR,
@@ -199,6 +215,7 @@ impl DeviceHandle {
         )
     }
 
+    /// SemaphoreHandleを作成する
     pub fn create_semaphore(
         &self,
         semaphore_create_info: &vk::SemaphoreCreateInfo,
@@ -206,10 +223,12 @@ impl DeviceHandle {
         crate::SemaphoreHandle::new(self.clone(), semaphore_create_info)
     }
 
+    /// FenceHandleを作成する
     pub fn create_fence(&self, fence_create_info: &vk::FenceCreateInfo) -> crate::FenceHandle {
         crate::FenceHandle::new(self.clone(), fence_create_info)
     }
 
+    /// AccelerationStructureHandleを作成する
     pub fn create_acceleration_structure(
         &self,
         acceleration_structure_create_info: &vk::AccelerationStructureCreateInfoKHR,
@@ -217,8 +236,9 @@ impl DeviceHandle {
         crate::AccelerationStructureHandle::new(self.clone(), acceleration_structure_create_info)
     }
 
-    // deviceの各関数
+    // 他のDeviceの関数
 
+    /// vk::Queueを取得する
     pub fn get_device_queue(&self, queue_family_index: u32, queue_index: u32) -> vk::Queue {
         unsafe {
             self.data()
@@ -227,6 +247,7 @@ impl DeviceHandle {
         }
     }
 
+    /// swapchainのイメージを取得する
     pub fn get_swapchain_images(&self, swapchain: &crate::SwapchainHandle) -> Vec<vk::Image> {
         unsafe {
             self.data()
@@ -236,6 +257,7 @@ impl DeviceHandle {
         }
     }
 
+    /// Bufferのデバイスアドレスを取得する
     pub fn get_buffer_device_address(
         &self,
         buffer_device_address_info: &vk::BufferDeviceAddressInfo,
@@ -247,6 +269,7 @@ impl DeviceHandle {
         }
     }
 
+    /// DescriptorSetの更新をする
     pub fn update_descriptor_sets(&self, write_descriptor_sets: &[vk::WriteDescriptorSet]) {
         unsafe {
             self.data()
@@ -255,6 +278,7 @@ impl DeviceHandle {
         }
     }
 
+    /// 次の表示イメージを取得する
     pub fn acquire_next_image(
         &self,
         swapchain: &crate::SwapchainHandle,
@@ -276,6 +300,7 @@ impl DeviceHandle {
         }
     }
 
+    /// QueueにコマンドをSubmitする
     pub fn queue_submit(
         &self,
         queue: vk::Queue,
@@ -294,6 +319,7 @@ impl DeviceHandle {
         }
     }
 
+    /// Queueにpresentを行う
     pub fn queue_present(
         &self,
         queue: vk::Queue,
@@ -306,6 +332,7 @@ impl DeviceHandle {
         }
     }
 
+    /// DeviceのIdleを待機する
     pub fn wait_idle(&self) {
         unsafe {
             self.data()
@@ -315,6 +342,7 @@ impl DeviceHandle {
         }
     }
 
+    /// Fenceをリセットする
     pub fn reset_fences(&self, fences: &[crate::FenceHandle]) {
         unsafe {
             let fences = fences
@@ -328,6 +356,7 @@ impl DeviceHandle {
         }
     }
 
+    /// Fenceを待機する
     pub fn wait_fences(&self, fences: &[crate::FenceHandle], timeout: u64) {
         unsafe {
             let fences = fences
@@ -341,6 +370,7 @@ impl DeviceHandle {
         }
     }
 
+    /// AccelerationStructureのビルドサイズを取得する
     pub fn get_acceleration_structure_build_sizes(
         &self,
         build_type: vk::AccelerationStructureBuildTypeKHR,
@@ -360,22 +390,39 @@ impl DeviceHandle {
 
     // raw
 
+    /// InstanceHandleを取得する
     pub fn instance(&self) -> crate::InstanceHandle {
         self.data().instance.clone()
     }
 
+    /// Deviceを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したDeviceは無効になる。
     pub unsafe fn device_raw(&self) -> ash::Device {
         self.data().device.clone()
     }
 
+    /// Swapchainを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したSwapchainは無効になる。
     pub unsafe fn swapchain_loader_raw(&self) -> Swapchain {
         self.data().swapchain_loader.clone()
     }
 
+    /// AccelerationStructureLoaderを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したAccelerationStructureLoaderは無効になる。
     pub unsafe fn acceleration_structure_loader_raw(&self) -> AccelerationStructure {
         self.data().acceleration_structure_loader.clone()
     }
 
+    /// RayTracingPipelineLoaderを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したRayTracingPipelineLoaderは無効になる。
     pub unsafe fn ray_tracing_pipeline_loader_raw(&self) -> RayTracingPipeline {
         self.data().ray_tracing_pipeline_loader.clone()
     }

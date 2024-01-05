@@ -43,8 +43,11 @@ impl ImageHandle {
         Self { ptr }
     }
 
+    // imageの関数
+
     // create系
 
+    /// ImageViewHandleを作成する
     pub fn create_image_view(
         &self,
         image_view_create_info: &vk::ImageViewCreateInfo,
@@ -52,8 +55,9 @@ impl ImageHandle {
         crate::ImageViewHandle::new(self.device(), self.clone(), image_view_create_info)
     }
 
-    // imageの各関数
+    // その他のimageの関数
 
+    /// Imageのメモリ要件を取得する
     pub fn get_image_memory_requirements(&self) -> vk::MemoryRequirements {
         unsafe {
             self.data()
@@ -62,6 +66,7 @@ impl ImageHandle {
         }
     }
 
+    /// Imageのメモリバインドを行う
     pub fn bind_image_memory(&self, device_memory: vk::DeviceMemory, offset: u64) {
         unsafe {
             self.data()
@@ -73,10 +78,15 @@ impl ImageHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// vk::Imageを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::Imageは無効になる。
     pub unsafe fn image_raw(&self) -> vk::Image {
         self.data().image.clone()
     }

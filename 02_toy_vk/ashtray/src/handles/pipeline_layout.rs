@@ -60,14 +60,20 @@ impl PipelineLayoutHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// DescriptorSetLayoutHandleを取得する
     pub fn descriptor_set_layout(&self) -> crate::DescriptorSetLayoutHandle {
         self.data().descriptor_set_layout.clone()
     }
 
+    /// vk::PipelineLayoutを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::PipelineLayoutは無効になる。
     pub unsafe fn pipeline_layout_raw(&self) -> vk::PipelineLayout {
         self.data().pipeline_layout.clone()
     }

@@ -79,14 +79,20 @@ impl ComputePipelineHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// PipelineLayoutHandleを取得する
     pub fn pipeline_layout(&self) -> crate::PipelineLayoutHandle {
         self.data().pipeline_layout.clone()
     }
 
+    /// vk::Pipelineを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::Pipelineは無効になる。
     pub unsafe fn compute_pipeline_raw(&self) -> vk::Pipeline {
         self.data().compute_pipeline.clone()
     }

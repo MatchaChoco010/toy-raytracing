@@ -55,18 +55,21 @@ impl AllocationHandle {
         Self { ptr }
     }
 
-    // allocationの各関数
+    // Allocationの関数
 
+    /// vk::DeviceMemoryを取得する
     pub fn memory(&self) -> vk::DeviceMemory {
         unsafe { self.data().allocation.memory() }
     }
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// AllocatorHandleを取得する
     pub fn allocator(&self) -> crate::AllocatorHandle {
         self.data().allocator.clone()
     }

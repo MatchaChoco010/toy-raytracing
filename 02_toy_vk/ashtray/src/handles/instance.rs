@@ -127,11 +127,12 @@ impl InstanceHandleData {
     }
 }
 
-/// vk::Instanceを参照カウントで管理するためのハンドル
+/// ash::Instanceを参照カウントで管理するためのハンドル
 pub struct InstanceHandle {
     ptr: NonNull<InstanceHandleData>,
 }
 impl InstanceHandle {
+    /// InstanceHandlwを作成する
     pub fn new(raw_display_handle: raw_window_handle::RawDisplayHandle) -> Self {
         let data = Box::new(
             InstanceHandleData::new(raw_display_handle).expect("Failed to create instance."),
@@ -140,8 +141,11 @@ impl InstanceHandle {
         Self { ptr }
     }
 
+    // Instanceの関数
+
     // create系
 
+    /// SurfaceHandleを作成する
     pub fn create_surface(
         &self,
         raw_display_handle: raw_window_handle::RawDisplayHandle,
@@ -151,6 +155,7 @@ impl InstanceHandle {
             .expect("Failed to create surface.")
     }
 
+    /// DeviceHandleを作成する
     pub fn create_device(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -160,8 +165,9 @@ impl InstanceHandle {
             .expect("Failed to create device.")
     }
 
-    // instanceの各関数
+    // その他のinstanceの関数
 
+    /// 物理デバイスを列挙する
     pub fn enumerate_physical_devices(&self) -> Vec<vk::PhysicalDevice> {
         unsafe {
             self.data()
@@ -171,6 +177,7 @@ impl InstanceHandle {
         }
     }
 
+    /// 物理デバイスのQueueFamilyのプロパティを取得する
     pub fn get_physical_device_queue_family_properties(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -182,6 +189,7 @@ impl InstanceHandle {
         }
     }
 
+    /// 物理デバイスのメモリプロパティを取得する
     pub fn get_physical_device_memory_properties(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -193,6 +201,7 @@ impl InstanceHandle {
         }
     }
 
+    /// 物理デバイスのプロパティを取得する
     pub fn get_physical_device_properties2(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -207,14 +216,15 @@ impl InstanceHandle {
 
     // raw
 
-    pub fn entry(&self) -> &ash::Entry {
-        &self.data().entry
-    }
-
+    /// ash::Entryを取得する
     pub unsafe fn entry_raw(&self) -> ash::Entry {
         self.data().entry.clone()
     }
 
+    /// ash::Instanceを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したash::Instanceは無効になる。
     pub unsafe fn instance_raw(&self) -> ash::Instance {
         self.data().instance.clone()
     }

@@ -73,17 +73,25 @@ impl DescriptorSetHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
+
+    /// DescriptorPoolHandleを取得する
     pub fn descriptor_pool(&self) -> crate::DescriptorPoolHandle {
         self.data().descriptor_pool.clone()
     }
 
+    /// DescriptorSetLayoutHandleを取得する
     pub fn descriptor_set_layout(&self) -> crate::DescriptorSetLayoutHandle {
         self.data().descriptor_set_layout.clone()
     }
 
+    /// vk::DescriptorSetを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::DescriptorSetは無効になる。
     pub unsafe fn descriptor_set_raw(&self) -> vk::DescriptorSet {
         self.data().descriptor_set.clone()
     }

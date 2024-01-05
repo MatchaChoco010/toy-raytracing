@@ -49,10 +49,15 @@ impl SemaphoreHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// vk::Semaphoreを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::Semaphoreは無効になる。
     pub unsafe fn semaphore_raw(&self) -> vk::Semaphore {
         self.data().semaphore.clone()
     }

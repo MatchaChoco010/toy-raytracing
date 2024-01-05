@@ -56,14 +56,20 @@ impl SwapchainHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// SurfaceHandleを取得する
     pub fn surface(&self) -> crate::SurfaceHandle {
         self.data().surface.clone()
     }
 
+    /// vk::SwapchainKHRを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::SwapchainKHRは無効になる。
     pub unsafe fn swapchain_raw(&self) -> vk::SwapchainKHR {
         self.data().swapchain.clone()
     }

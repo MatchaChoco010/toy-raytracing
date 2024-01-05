@@ -51,18 +51,22 @@ impl ImageViewHandle {
         Self { ptr }
     }
 
-    // image viewの各関数
-
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// ImageHandleを取得する
     pub fn image(&self) -> crate::ImageHandle {
         self.data().image.clone()
     }
 
+    /// vk::ImageViewを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::ImageViewは無効になる。
     pub unsafe fn image_view_raw(&self) -> vk::ImageView {
         self.data().image_view.clone()
     }

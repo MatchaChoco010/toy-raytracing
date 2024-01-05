@@ -235,7 +235,7 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
             queue: queue_handles.graphics.queue,
             queue_family_index: queue_handles.graphics.family_index,
             command_pool: unsafe { command_pool.command_pool_raw() },
-            allocator: unsafe { allocator.allocator_raw() },
+            allocator: allocator.allocator(),
         };
 
         (app, ash_render_state)

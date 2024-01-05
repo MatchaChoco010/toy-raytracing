@@ -51,8 +51,9 @@ impl AccelerationStructureHandle {
         Self { ptr }
     }
 
-    // 関数
+    // AccelerationStructureの関数
 
+    /// AccelerationStructureのデバイスアドレスを取得する
     pub fn get_acceleration_structure_device_address(&self) -> u64 {
         unsafe {
             self.data()
@@ -67,10 +68,15 @@ impl AccelerationStructureHandle {
 
     // raw
 
+    /// DeviceHandleを取得する
     pub fn device(&self) -> crate::DeviceHandle {
         self.data().device.clone()
     }
 
+    /// vk::AccelerationStructureを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したvk::AccelerationStructureは無効になる。
     pub unsafe fn acceleration_structure_raw(&self) -> vk::AccelerationStructureKHR {
         self.data().acceleration_structure.clone()
     }

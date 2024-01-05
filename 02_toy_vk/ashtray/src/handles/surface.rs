@@ -25,9 +25,9 @@ impl SurfaceHandleData {
         // surfaceの作成
         let (surface_loader, surface) = unsafe {
             let surface_loader =
-                ash::extensions::khr::Surface::new(instance_handle.entry(), &instance_handle);
+                ash::extensions::khr::Surface::new(&instance_handle.entry_raw(), &instance_handle);
             let surface = ash_window::create_surface(
-                instance_handle.entry(),
+                &instance_handle.entry_raw(),
                 &instance_handle,
                 raw_display_handle,
                 raw_window_handle,
@@ -64,8 +64,9 @@ impl SurfaceHandle {
         Ok(Self { ptr })
     }
 
-    // surfaceの各関数
+    // surfaceの関数
 
+    /// PhysicalDeviceがSurfaceをサポートしているか確認する
     pub fn get_physical_device_surface_support(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -83,6 +84,7 @@ impl SurfaceHandle {
         }
     }
 
+    /// PhysicalDeviceのSurfaceのCapabilitiesを取得する
     pub fn get_physical_device_surface_capabilities(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -95,6 +97,7 @@ impl SurfaceHandle {
         }
     }
 
+    /// PhysicalDeviceのSurfaceのFormatsを取得する
     pub fn get_physical_device_surface_formats(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -107,6 +110,7 @@ impl SurfaceHandle {
         }
     }
 
+    /// PhysicalDeviceのSurfaceのPresentModesを取得する
     pub fn get_physical_device_surface_present_modes(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -121,10 +125,15 @@ impl SurfaceHandle {
 
     // raw
 
+    /// InstanceHandleを取得する
     pub fn instance(&self) -> crate::InstanceHandle {
         self.data().instance.clone()
     }
 
+    /// SurfaceLoaderを取得する
+    /// ## Safety
+    /// 参照カウントの管理から中身を取り出すので注意。
+    /// Handleが破棄されると、この関数で取り出したSurfaceLoaderは無効になる。
     pub unsafe fn surface_loader_raw(&self) -> Surface {
         self.data().surface_loader.clone()
     }
