@@ -7,74 +7,30 @@ use egui_ash::{
 use gpu_allocator::vulkan::*;
 use std::sync::{Arc, Mutex};
 
+mod pane;
 mod scene_view;
+mod tree_behaviour;
 
 struct Viewer {
     scene_view: scene_view::SceneView,
+    tree: egui_tiles::Tree<pane::Pane>,
+    tree_behavior: tree_behaviour::TreeBehavior,
 }
 impl Viewer {
     fn new(scene_view: scene_view::SceneView) -> Self {
-        Self { scene_view }
+        let tree = pane::Pane::create_tree(scene_view.clone());
+        Self {
+            scene_view,
+            tree,
+            tree_behavior: tree_behaviour::TreeBehavior,
+        }
     }
 }
 impl App for Viewer {
     fn ui(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Scene View").show(ctx, |ui| {
-            ui.add(&mut self.scene_view);
-        });
-        egui::Window::new("Stats").show(ctx, |ui| {
-            ui.label(format!("sample_count: {}", self.scene_view.sample_count));
-            ui.label(format!(
-                "size: {}x{}",
-                self.scene_view.width, self.scene_view.height
-            ));
-        });
-        egui::Window::new("Parameters").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("max_sample_count: ");
-                ui.add(egui::widgets::DragValue::new(
-                    &mut self.scene_view.max_sample_count,
-                ));
-            });
-            ui.add(egui::widgets::Checkbox::new(
-                &mut self.scene_view.fit_view,
-                "fit view",
-            ));
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("size: ");
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.width));
-                ui.label("x");
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.height));
-            });
-
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("camera position: ");
-                ui.add(egui::widgets::DragValue::new(
-                    &mut self.scene_view.position_x,
-                ));
-                ui.add(egui::widgets::DragValue::new(
-                    &mut self.scene_view.position_y,
-                ));
-                ui.add(egui::widgets::DragValue::new(
-                    &mut self.scene_view.position_z,
-                ));
-            });
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("camera rotate: ");
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_x));
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_y));
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_z));
-            });
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("L_white: ");
-                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.l_white));
-            });
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.label("max recursion depth: ");
-                ui.add(egui::widgets::DragValue::new(
-                    &mut self.scene_view.max_recursion_depth,
-                ));
-            });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let behavior = &mut self.tree_behavior;
+            self.tree.ui(behavior, ui);
         });
     }
 
@@ -251,9 +207,11 @@ async fn main() {
             viewport_builder: Some(
                 egui::ViewportBuilder::default()
                     .with_title("02_toy_vk-viewer")
-                    .with_inner_size(egui::vec2(1200.0, 800.0)),
+                    .with_inner_size(egui::vec2(1400.0, 800.0)),
             ),
             present_mode: vk::PresentModeKHR::MAILBOX,
+            follow_system_theme: true,
+            default_theme: egui_ash::Theme::Dark,
             ..Default::default()
         },
     )
