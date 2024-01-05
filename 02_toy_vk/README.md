@@ -6,3 +6,5 @@ LambertとEmissive、そしてガラスのマテリアルを実装したvulkan r
 ```
 cargo run --release
 ```
+
+![screenshot](./screenshot.png)
