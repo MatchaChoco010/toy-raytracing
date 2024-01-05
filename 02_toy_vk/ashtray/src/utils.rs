@@ -362,10 +362,7 @@ pub fn create_swapchain_objects(
     // surfaceのformatの選択
     let surface_format = surface_formats
         .iter()
-        .find(|surface_format| {
-            surface_format.format == vk::Format::B8G8R8A8_SRGB
-                && surface_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-        })
+        .find(|surface_format| surface_format.format == vk::Format::B8G8R8A8_UNORM)
         .unwrap_or(&surface_formats[0])
         .clone();
 

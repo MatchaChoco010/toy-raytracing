@@ -43,7 +43,7 @@ impl SceneView {
             position_x: 0.0,
             position_y: 2.0,
             position_z: 5.0,
-            l_white: 10.0,
+            l_white: 1.0,
             max_recursion_depth: 8,
         }
     }
