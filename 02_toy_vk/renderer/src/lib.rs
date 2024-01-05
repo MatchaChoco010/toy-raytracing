@@ -20,4 +20,6 @@ pub struct Parameters {
     pub position_x: f32,
     pub position_y: f32,
     pub position_z: f32,
+    pub l_white: f32,
+    pub max_recursion_depth: u32,
 }

@@ -5,18 +5,30 @@
 #extension GL_EXT_shader_explicit_arithmetic_types : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+struct Material {
+  vec3 color;
+  uint ty;
+};
+
+struct Prd {
+  Material material;
+  uint miss;
+  vec3 hitPosition;
+  vec3 hitGeometryNormal;
+  vec3 hitShadingNormal;
+};
+
+layout(location = 0) rayPayloadInEXT Prd prd;
+
+layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+
 struct InstanceParam {
   uint64_t indexBuffer;
   uint64_t vertexBuffer;
   mat4 transform;
   uint materialIndex;
-  uint padding1;
+  float lWhite;
   uint64_t padding2;
-};
-
-struct Material {
-  vec3 color;
-  uint ty;
 };
 
 struct Vertex {
@@ -35,6 +47,9 @@ layout(push_constant) uniform PushConstants {
   mat4 cameraRotate;
   vec3 cameraTranslate;
   uint seed;
+  uint maxRecursionDepth;
+  uint padding1;
+  uint64_t padding2;
 }
 pushConstants;
 
@@ -44,8 +59,6 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Vertices {
 layout(buffer_reference, scalar) buffer Indices { uvec3 i[]; };
 
 hitAttributeEXT vec2 attribs;
-
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
 
 void main() {
   vec3 barycentricCoords =
@@ -67,15 +80,15 @@ void main() {
 
   Material material = materials[instanceParam.materialIndex];
 
-  vec3 color;
-  if (material.ty == 0) {
-    vec3 l = max(dot(normal, vec3(-1.0, 1.0, 1.0)), 0.0) + vec3(0.1);
-    color = material.color * l;
-  } else if (material.ty == 1) {
-    color = material.color;
-  } else {
-    color = vec3(1.0, 0.0, 0.0);
-  }
+  vec3 hitPosition = barycentricCoords.x * v0.position +
+                     barycentricCoords.y * v1.position +
+                     barycentricCoords.z * v2.position;
+  vec3 geometryNormal =
+      normalize(cross(v1.position - v0.position, v2.position - v0.position));
 
-  hitValue = color;
+  prd.hitPosition = hitPosition;
+  prd.hitGeometryNormal = geometryNormal;
+  prd.hitShadingNormal = normal;
+  prd.material = material;
+  prd.miss = 0;
 }

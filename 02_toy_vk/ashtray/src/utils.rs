@@ -1382,7 +1382,7 @@ pub fn create_ray_tracing_pipelines(
             .binding(0)
             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR);
+            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR | vk::ShaderStageFlags::CLOSEST_HIT_KHR);
 
         let layout_storage_image = vk::DescriptorSetLayoutBinding::builder()
             .binding(1)

@@ -21,6 +21,9 @@ struct PushConstants {
     camera_rotate: glam::Mat4,
     camera_translate: glam::Vec3,
     seed: u32,
+    max_recursion_depth: u32,
+    l_white: f32,
+    padding2: u64,
 }
 
 pub struct Renderer {
@@ -33,6 +36,8 @@ pub struct Renderer {
     position_x: f32,
     position_y: f32,
     position_z: f32,
+    l_white: f32,
+    max_recursion_depth: u32,
 
     instance: ashtray::InstanceHandle,
     physical_device: vk::PhysicalDevice,
@@ -58,11 +63,11 @@ pub struct Renderer {
     ray_tracing_descriptor_set: Option<ashtray::DescriptorSetHandle>,
     shader_binding_table: Option<ashtray::utils::ShaderBindingTable>,
 
-    tonemap_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
-    tonemap_compute_pipeline: ashtray::ComputePipelineHandle,
-    tonemap_command_buffers: [ashtray::CommandBufferHandle; 2],
-    tonemap_descriptor_sets: [ashtray::DescriptorSetHandle; 2],
-    tonemap_fences: [ashtray::FenceHandle; 2],
+    final_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
+    final_compute_pipeline: ashtray::ComputePipelineHandle,
+    final_command_buffers: [ashtray::CommandBufferHandle; 2],
+    final_descriptor_sets: [ashtray::DescriptorSetHandle; 2],
+    final_fences: [ashtray::FenceHandle; 2],
 
     current_image_index: usize,
 
@@ -134,7 +139,7 @@ impl Renderer {
         // render用fenceの作成
         let in_flight_fence = ashtray::utils::create_signaled_fence(&device);
 
-        let tonemap_descriptor_set_layout = device.create_descriptor_set_layout(
+        let final_descriptor_set_layout = device.create_descriptor_set_layout(
             &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
@@ -150,32 +155,32 @@ impl Renderer {
                     .build(),
             ]),
         );
-        let tonemap_compute_pipeline_layout = device.create_pipeline_layout(
-            &tonemap_descriptor_set_layout,
+        let final_compute_pipeline_layout = device.create_pipeline_layout(
+            &final_descriptor_set_layout,
             &vk::PipelineLayoutCreateInfo::builder()
-                .set_layouts(&[*tonemap_descriptor_set_layout])
+                .set_layouts(&[*final_descriptor_set_layout])
                 .push_constant_ranges(&[vk::PushConstantRange {
                     stage_flags: vk::ShaderStageFlags::COMPUTE,
                     offset: 0,
                     size: std::mem::size_of::<u32>() as u32,
                 }]),
         );
-        let tonemap_compute_shader_module = ashtray::utils::create_shader_module(
+        let final_compute_shader_module = ashtray::utils::create_shader_module(
             &device,
-            &include_bytes!("./shaders/spv/tonemap.comp.spv")[..],
+            &include_bytes!("./shaders/spv/final.comp.spv")[..],
         );
-        let tonemap_compute_pipeline = ashtray::utils::create_compute_pipeline(
+        let final_compute_pipeline = ashtray::utils::create_compute_pipeline(
             &device,
-            &tonemap_compute_pipeline_layout,
-            &tonemap_compute_shader_module,
+            &final_compute_pipeline_layout,
+            &final_compute_shader_module,
         );
-        let tonemap_command_pool =
+        let final_command_pool =
             ashtray::utils::create_compute_command_pool(&device, &queue_handles);
-        let tonemap_command_buffers: [ashtray::CommandBufferHandle; 2] =
-            ashtray::utils::allocate_command_buffers(&device, &tonemap_command_pool, 2)
+        let final_command_buffers: [ashtray::CommandBufferHandle; 2] =
+            ashtray::utils::allocate_command_buffers(&device, &final_command_pool, 2)
                 .try_into()
                 .unwrap();
-        let tonemap_descriptor_pool = device.create_descriptor_pool(
+        let final_descriptor_pool = device.create_descriptor_pool(
             &vk::DescriptorPoolCreateInfo::builder()
                 .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
                 .max_sets(2)
@@ -190,17 +195,17 @@ impl Renderer {
                     },
                 ]),
         );
-        let tonemap_descriptor_sets: [ashtray::DescriptorSetHandle; 2] = device
+        let final_descriptor_sets: [ashtray::DescriptorSetHandle; 2] = device
             .allocate_descriptor_sets(
-                &tonemap_descriptor_pool,
-                &tonemap_descriptor_set_layout,
+                &final_descriptor_pool,
+                &final_descriptor_set_layout,
                 &vk::DescriptorSetAllocateInfo::builder()
-                    .descriptor_pool(*tonemap_descriptor_pool)
-                    .set_layouts(&[*tonemap_descriptor_set_layout; 2]),
+                    .descriptor_pool(*final_descriptor_pool)
+                    .set_layouts(&[*final_descriptor_set_layout; 2]),
             )
             .try_into()
             .unwrap();
-        for descriptor_set in tonemap_descriptor_sets.iter() {
+        for descriptor_set in final_descriptor_sets.iter() {
             device.update_descriptor_sets(&[
                 vk::WriteDescriptorSet::builder()
                     .dst_set(**descriptor_set)
@@ -224,7 +229,7 @@ impl Renderer {
                     .build(),
             ]);
         }
-        let tonemap_fences = [
+        let final_fences = [
             ashtray::utils::create_signaled_fence(&device),
             ashtray::utils::create_signaled_fence(&device),
         ];
@@ -239,6 +244,8 @@ impl Renderer {
             position_x: 0.0,
             position_y: 0.0,
             position_z: 0.0,
+            l_white: 1.0,
+            max_recursion_depth: 1,
 
             instance,
             physical_device,
@@ -264,11 +271,11 @@ impl Renderer {
             render_command_buffer,
             in_flight_fence,
 
-            tonemap_compute_pipeline_layout,
-            tonemap_compute_pipeline,
-            tonemap_command_buffers,
-            tonemap_descriptor_sets,
-            tonemap_fences,
+            final_compute_pipeline_layout,
+            final_compute_pipeline,
+            final_command_buffers,
+            final_descriptor_sets,
+            final_fences,
 
             current_image_index: 0,
 
@@ -343,45 +350,6 @@ impl Renderer {
             &instances,
             &materials,
         );
-
-        // let vertices = [
-        //     Vertex {
-        //         position: [0.0, -0.5, 0.0],
-        //         normal: [0.0, 0.0, 1.0],
-        //     },
-        //     Vertex {
-        //         position: [-0.5, 0.5, 0.0],
-        //         normal: [0.0, 0.0, 1.0],
-        //     },
-        //     Vertex {
-        //         position: [0.5, 0.5, 0.0],
-        //         normal: [0.0, 0.0, 1.0],
-        //     },
-        // ];
-        // let indices: [u32; 3] = [0, 1, 2];
-        // let blas = ashtray::utils::cerate_blas(
-        //     &self.device,
-        //     &self.queue_handles,
-        //     &self.compute_command_pool,
-        //     &self.allocator,
-        //     &vertices,
-        //     &indices,
-        // );
-
-        // let instances = [(blas.clone(), glam::Mat4::IDENTITY, 0)];
-        // let materials = [Material {
-        //     color: [1.0, 0.0, 0.0],
-        //     padding: 0,
-        // }];
-        // let tlas = ashtray::utils::create_tlas(
-        //     &self.device,
-        //     &self.queue_handles,
-        //     &self.compute_command_pool,
-        //     &self.transfer_command_pool,
-        //     &self.allocator,
-        //     &instances,
-        //     &materials,
-        // );
 
         // ray tracing pipelineの作成
         let raygen_shader_module = ashtray::utils::create_shader_module(
@@ -555,6 +523,8 @@ impl Renderer {
             self.position_x = parameters.position_x;
             self.position_y = parameters.position_y;
             self.position_z = parameters.position_z;
+            self.l_white = parameters.l_white;
+            self.max_recursion_depth = parameters.max_recursion_depth;
 
             self.device.wait_idle();
 
@@ -636,7 +606,7 @@ impl Renderer {
                     vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
                 ),
             ];
-            for (i, descriptor_set) in self.tonemap_descriptor_sets.iter().enumerate() {
+            for (i, descriptor_set) in self.final_descriptor_sets.iter().enumerate() {
                 self.device.update_descriptor_sets(&[
                     vk::WriteDescriptorSet::builder()
                         .dst_set(**descriptor_set)
@@ -667,6 +637,8 @@ impl Renderer {
             || self.position_x != parameters.position_x
             || self.position_y != parameters.position_y
             || self.position_z != parameters.position_z
+            || self.l_white != parameters.l_white
+            || self.max_recursion_depth != parameters.max_recursion_depth
         {
             // そうでなくてdirtyなら蓄積をリセットするコマンドを発行する。
             self.max_sample_count = parameters.max_sample_count;
@@ -677,6 +649,8 @@ impl Renderer {
             self.position_x = parameters.position_x;
             self.position_y = parameters.position_y;
             self.position_z = parameters.position_z;
+            self.l_white = parameters.l_white;
+            self.max_recursion_depth = parameters.max_recursion_depth;
 
             let command_buffer = self.render_command_buffer.clone();
             command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
@@ -777,6 +751,9 @@ impl Renderer {
                     self.position_z,
                 ),
                 seed: self.sample_count as u32,
+                max_recursion_depth: self.max_recursion_depth,
+                l_white: self.l_white,
+                padding2: 0,
             }],
         );
 
@@ -808,11 +785,11 @@ impl Renderer {
         self.sample_count += 1;
     }
 
-    // tonemapしつつtextureに結果を焼き込む
+    // finalしつつtextureに結果を焼き込む
     fn take_image(&mut self) -> crate::NextImage {
         let image_handles = &self.images[self.current_image_index];
-        let fences = [self.tonemap_fences[self.current_image_index].clone()];
-        let command_buffer = self.tonemap_command_buffers[self.current_image_index].clone();
+        let fences = [self.final_fences[self.current_image_index].clone()];
+        let command_buffer = self.final_command_buffers[self.current_image_index].clone();
 
         self.device.wait_fences(&fences, u64::MAX);
         self.device.reset_fences(&fences);
@@ -832,16 +809,16 @@ impl Renderer {
             &image_handles.image,
         );
 
-        command_buffer.cmd_bind_compute_pipeline(&self.tonemap_compute_pipeline);
+        command_buffer.cmd_bind_compute_pipeline(&self.final_compute_pipeline);
         command_buffer.cmd_bind_descriptor_sets(
             vk::PipelineBindPoint::COMPUTE,
-            &self.tonemap_compute_pipeline_layout,
+            &self.final_compute_pipeline_layout,
             0,
-            &[self.tonemap_descriptor_sets[self.current_image_index].clone()],
+            &[self.final_descriptor_sets[self.current_image_index].clone()],
             &[],
         );
         command_buffer.cmd_push_constants(
-            &self.tonemap_compute_pipeline_layout,
+            &self.final_compute_pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
             &[self.sample_count],
@@ -869,7 +846,7 @@ impl Renderer {
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
                     .wait_semaphores(&[]),
             ),
-            Some(self.tonemap_fences[self.current_image_index].clone()),
+            Some(self.final_fences[self.current_image_index].clone()),
         );
 
         let image_view = image_handles.image_view.clone();

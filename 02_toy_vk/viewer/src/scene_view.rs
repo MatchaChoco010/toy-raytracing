@@ -19,6 +19,8 @@ pub struct SceneView {
     pub position_x: f32,
     pub position_y: f32,
     pub position_z: f32,
+    pub l_white: f32,
+    pub max_recursion_depth: u32,
 }
 impl SceneView {
     pub fn new(renderer: renderer::Renderer, image_registry: egui_ash::ImageRegistry) -> Self {
@@ -41,6 +43,8 @@ impl SceneView {
             position_x: 0.0,
             position_y: 2.0,
             position_z: 5.0,
+            l_white: 10.0,
+            max_recursion_depth: 8,
         }
     }
 
@@ -55,6 +59,8 @@ impl SceneView {
             position_x: self.position_x,
             position_y: self.position_y,
             position_z: self.position_z,
+            l_white: self.l_white,
+            max_recursion_depth: self.max_recursion_depth,
         });
         let texture_id = unsafe {
             self.image_registry.register_user_texture(

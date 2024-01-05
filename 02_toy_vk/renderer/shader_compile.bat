@@ -3,4 +3,4 @@ glslc.exe src/shaders/src/raygen.rgen -O --target-env=vulkan1.2 -o src/shaders/s
 glslc.exe src/shaders/src/miss.rmiss -O --target-env=vulkan1.2 -o src/shaders/spv/miss.rmiss.spv
 glslc.exe src/shaders/src/closesthit.rchit -O --target-env=vulkan1.2 -o src/shaders/spv/closesthit.rchit.spv
 
-glslc.exe src/shaders/src/tonemap.comp -O --target-env=vulkan1.2 -o src/shaders/spv/tonemap.comp.spv
+glslc.exe src/shaders/src/final.comp -O --target-env=vulkan1.2 -o src/shaders/spv/final.comp.spv

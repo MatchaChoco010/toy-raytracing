@@ -1,8 +1,19 @@
 #version 460
 #extension GL_EXT_ray_tracing : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+struct Material {
+  vec3 color;
+  uint ty;
+};
 
-void main() {
-  hitValue = vec3(0.0, 0.15, 0.1);
-}
+struct Prd {
+  Material material;
+  uint miss;
+  vec3 hitPosition;
+  vec3 hitGeometryNormal;
+  vec3 hitShadingNormal;
+};
+
+layout(location = 0) rayPayloadInEXT Prd prd;
+
+void main() { prd.miss = 1; }

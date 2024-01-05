@@ -113,6 +113,16 @@ impl App for Viewer {
                 ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_y));
                 ui.add(egui::widgets::DragValue::new(&mut self.scene_view.rotate_z));
             });
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("L_white: ");
+                ui.add(egui::widgets::DragValue::new(&mut self.scene_view.l_white));
+            });
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.label("max recursion depth: ");
+                ui.add(egui::widgets::DragValue::new(
+                    &mut self.scene_view.max_recursion_depth,
+                ));
+            });
         });
     }
 
