@@ -4,18 +4,19 @@
 			"path": "."
 		},
 		{
-			"path": "02_toy_vk/ashtray"
+			"path": "03_glb_pbr/ashtray"
 		},
 		{
-			"path": "02_toy_vk/renderer"
+			"path": "03_glb_pbr/renderer"
 		},
 		{
-			"path": "02_toy_vk/viewer"
+			"path": "03_glb_pbr/viewer"
 		}
 	],
 	"settings": {
 		"cSpell.words": [
 			"aabb",
+			"Bindless",
 			"blas",
 			"bytemuck",
 			"closesthit",
@@ -23,6 +24,7 @@
 			"elwt",
 			"KHRONOS",
 			"lerp",
+			"mipmap",
 			"nonoverlapping",
 			"powf",
 			"raygen",

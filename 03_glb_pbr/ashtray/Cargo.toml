@@ -1,0 +1,17 @@
+[package]
+name = "ashtray"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["validation"]
+validation = []
+
+[dependencies]
+anyhow.workspace = true
+ash.workspace = true
+ash-window = "0.12.0"
+bytemuck.workspace = true
+glam.workspace = true
+gpu-allocator.workspace = true
+raw-window-handle = "0.5.2"
