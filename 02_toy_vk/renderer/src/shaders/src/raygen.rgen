@@ -115,7 +115,8 @@ void main() {
 
       vec3 brdf = material.color / PI;
 
-      attenuation *= brdf * max(dot(prd.hitShadingNormal, direction), 0) / pdf;
+      attenuation *= brdf * max(dot(prd.hitShadingNormal, direction), 0) / pdf /
+                     russianRouletteProbability;
       light += attenuation * vec3(0.0); // emissive項は0
     } else if (material.ty == 1) {
       // Emissive

@@ -6,7 +6,16 @@
 #define PI 3.1415926535897932384626433832795
 
 struct Material {
-  vec3 color;
+  vec4 baseColorFactor;
+  int baseColorTextureIndex;
+  vec3 emissiveFactor;
+  int emissiveTextureIndex;
+  float metallicFactor;
+  int metallicTextureIndex;
+  float roughnessFactor;
+  int roughnessTextureIndex;
+  float normalFactor;
+  int normalTextureIndex;
   uint ty;
 };
 
@@ -25,11 +34,12 @@ struct Prd {
   vec3 hitPosition;
   vec3 hitGeometryNormal;
   vec3 hitShadingNormal;
+  vec2 hitTexCoord;
 };
 
 layout(location = 0) rayPayloadEXT Prd prd;
 
-layout(set = 1, binding = 0, rgba8) uniform image2D images[];
+layout(set = 1, binding = 0) uniform sampler2D images[];
 layout(set = 2, binding = 0) readonly buffer Materials {
   Material materials[];
 };
@@ -126,9 +136,33 @@ void main() {
 
     Material material = prd.material;
     if (material.ty == 0) {
-      // Lambert
-      float russianRouletteProbability =
-          max(material.color.r, max(material.color.g, material.color.b));
+      // GGX + Normalized Lambert
+
+      vec3 baseColor;
+      if (material.baseColorTextureIndex == -1) {
+        baseColor = material.baseColorFactor.rgb;
+      } else {
+        baseColor =
+            material.baseColorFactor.rgb *
+            texture(images[material.baseColorTextureIndex], prd.hitTexCoord)
+                .rgb;
+      }
+      vec3 emissive;
+      if (material.emissiveTextureIndex == -1) {
+        emissive = material.emissiveFactor;
+      } else {
+        emissive =
+            material.emissiveFactor *
+            texture(images[material.emissiveTextureIndex], prd.hitTexCoord).rgb;
+      }
+
+      vec3 russianRouletteColor = baseColor + emissive;
+      float russianRouletteProbability = 1.0;
+      if (depth > 1) {
+        russianRouletteProbability =
+            min(1.0, max(russianRouletteColor.r,
+                         max(russianRouletteColor.g, russianRouletteColor.b)));
+      }
       if (rnd1() > russianRouletteProbability) {
         break;
       }
@@ -137,62 +171,14 @@ void main() {
       direction = cosineWeightedDirection(prd.hitGeometryNormal);
       float pdf = dot(direction, prd.hitGeometryNormal) / PI;
 
-      vec3 brdf = material.color / PI;
+      vec3 brdf = baseColor / PI;
 
-      attenuation *= brdf * max(dot(prd.hitShadingNormal, direction), 0) / pdf;
-      light += attenuation * vec3(0.0); // emissive項は0
-    } else if (material.ty == 1) {
-      // Emissive
-      vec3 emission = material.color;
-      light += attenuation * emission;
-      break;
+      light += attenuation * emissive / russianRouletteProbability;
+      attenuation *= brdf * max(dot(prd.hitShadingNormal, direction), 0) / pdf /
+                     russianRouletteProbability;
     } else {
-      // Glass
-      vec3 normal = prd.hitGeometryNormal;
-      bool frontHit = dot(normal, direction) < 0;
-
-      float n1 = 1.0;
-      float n2 = 1.45;
-      if (!frontHit) {
-        float tmp = n1;
-        n1 = n2;
-        n2 = tmp;
-        normal = -normal;
-      }
-
-      vec3 refractDirection = refract(direction, normal, n1 / n2);
-      vec3 reflectDirection = reflect(direction, normal);
-
-      bool isTotalInternalReflection =
-          (1.0 - (n1 / n2) * (n1 / n2) *
-                     (1.0 - dot(normal, direction) * dot(normal, direction))) <
-          0;
-      if (isTotalInternalReflection) {
-        origin = prd.hitPosition;
-        direction = reflectDirection;
-        attenuation *= vec3(1.0);
-        light += attenuation * vec3(0.0);
-      } else {
-        float cosThetaI = dot(normal, direction);
-        float cosThetaO = dot(normal, refractDirection);
-        float rhoS = (n1 * cosThetaI - n2 * cosThetaO) /
-                     (n1 * cosThetaI + n2 * cosThetaO);
-        float rhoP = (n1 * cosThetaO - n2 * cosThetaI) /
-                     (n1 * cosThetaO + n2 * cosThetaI);
-        float fresnel = (rhoS * rhoS + rhoP * rhoP) / 2.0;
-
-        if (rnd1() < fresnel) {
-          origin = prd.hitPosition;
-          direction = reflectDirection;
-          attenuation *= vec3(1.0);
-          light += attenuation * vec3(0.0);
-        } else {
-          origin = prd.hitPosition;
-          direction = refractDirection;
-          attenuation *= vec3(1.0);
-          light += attenuation * vec3(0.0);
-        }
-      }
+      light = vec3(1.0, 1.0, 0.0);
+      break;
     }
   }
 

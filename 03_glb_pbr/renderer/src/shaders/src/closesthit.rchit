@@ -12,7 +12,16 @@
 #define GetResource(Name, Index) GetLayoutVariableName(Name)[Index]
 
 struct Material {
-  vec3 color;
+  vec4 baseColorFactor;
+  int baseColorTextureIndex;
+  vec3 emissiveFactor;
+  int emissiveTextureIndex;
+  float metallicFactor;
+  int metallicTextureIndex;
+  float roughnessFactor;
+  int roughnessTextureIndex;
+  float normalFactor;
+  int normalTextureIndex;
   uint ty;
 };
 
@@ -28,6 +37,8 @@ struct InstanceParam {
 struct Vertex {
   vec3 position;
   vec3 normal;
+  vec4 tangent;
+  vec2 texCoord;
 };
 
 struct Prd {
@@ -36,14 +47,15 @@ struct Prd {
   vec3 hitPosition;
   vec3 hitGeometryNormal;
   vec3 hitShadingNormal;
+  vec2 hitTexCoord;
 };
 
 layout(location = 0) rayPayloadInEXT Prd prd;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 
-RegisterStorage(std430, readonly, Materials, { Material items[]; });
-RegisterStorage(std430, readonly, InstanceParams, { InstanceParam items[]; });
+RegisterStorage(scalar, readonly, Materials, { Material items[]; });
+RegisterStorage(scalar, readonly, InstanceParams, { InstanceParam items[]; });
 
 layout(push_constant) uniform PushConstants {
   mat4 cameraRotate;
@@ -86,6 +98,10 @@ void main() {
                           barycentricCoords.z * v2.normal);
   normal = transpose(inverse(mat3(instanceParam.transform))) * normal;
 
+  vec2 texCoord = barycentricCoords.x * v0.texCoord +
+                  barycentricCoords.y * v1.texCoord +
+                  barycentricCoords.z * v2.texCoord;
+
   Material material = GetResource(Materials, pushConstants.materialsIndex)
                           .items[instanceParam.materialIndex];
 
@@ -98,6 +114,7 @@ void main() {
   prd.hitPosition = hitPosition;
   prd.hitGeometryNormal = geometryNormal;
   prd.hitShadingNormal = normal;
+  prd.hitTexCoord = texCoord;
   prd.material = material;
   prd.miss = 0;
 }

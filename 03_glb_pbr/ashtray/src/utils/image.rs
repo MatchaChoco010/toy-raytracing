@@ -208,6 +208,157 @@ pub fn create_shader_readonly_image(
     }
 }
 
+/// storage imageを作成する関数
+pub fn create_shader_readonly_image_with_data(
+    device: &crate::DeviceHandle,
+    queue_handles: &QueueHandles,
+    allocator: &crate::AllocatorHandle,
+    transfer_command_pool: &crate::CommandPoolHandle,
+    width: u32,
+    height: u32,
+    data: &[u8],
+    format: vk::Format,
+    usage: vk::ImageUsageFlags,
+) -> ImageHandles {
+    // imageの生成
+    let image_create_info = vk::ImageCreateInfo::builder()
+        .image_type(vk::ImageType::TYPE_2D)
+        .format(format)
+        .extent(vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        })
+        .mip_levels(1)
+        .array_layers(1)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .usage(usage | vk::ImageUsageFlags::TRANSFER_DST)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .initial_layout(vk::ImageLayout::UNDEFINED);
+    let image = device.create_image(&image_create_info);
+
+    // imageのメモリ確保
+    let image_memory_requirement = image.get_image_memory_requirements();
+    let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+        name: "shader_readonly_image",
+        requirements: image_memory_requirement,
+        location: gpu_allocator::MemoryLocation::GpuOnly,
+        linear: false,
+        allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
+    });
+
+    // imageとメモリのバインド
+    image.bind_image_memory(allocation.memory(), allocation.offset());
+
+    // image_viewの作成
+    let image_view_create_info = vk::ImageViewCreateInfo::builder()
+        .view_type(vk::ImageViewType::TYPE_2D)
+        .format(format)
+        .components(
+            vk::ComponentMapping::builder()
+                .r(vk::ComponentSwizzle::IDENTITY)
+                .g(vk::ComponentSwizzle::IDENTITY)
+                .b(vk::ComponentSwizzle::IDENTITY)
+                .a(vk::ComponentSwizzle::IDENTITY)
+                .build(),
+        )
+        .subresource_range(
+            vk::ImageSubresourceRange::builder()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1)
+                .build(),
+        )
+        .image(*image);
+    let image_view = device.create_image_view(&image_view_create_info);
+
+    {
+        // staging bufferの作成
+        let staging_buffer = create_host_buffer_with_data(
+            device,
+            allocator,
+            data,
+            vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
+
+        // bufferのコピー
+        let command_buffer = &allocate_command_buffers(device, transfer_command_pool, 1)[0];
+        begin_onetime_command_buffer(&command_buffer);
+
+        cmd_image_barriers(
+            command_buffer,
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::NONE,
+            vk::ImageLayout::UNDEFINED,
+            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+            vk::AccessFlags2::NONE,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &image,
+        );
+
+        command_buffer.cmd_copy_buffer_to_image(
+            &staging_buffer.buffer,
+            &image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            std::slice::from_ref(
+                &vk::BufferImageCopy::builder()
+                    .image_subresource(
+                        vk::ImageSubresourceLayers::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .mip_level(0)
+                            .base_array_layer(0)
+                            .layer_count(1)
+                            .build(),
+                    )
+                    .image_extent(vk::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    })
+                    .buffer_offset(0)
+                    .buffer_image_height(0)
+                    .buffer_row_length(0)
+                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                    .build(),
+            ),
+        );
+
+        // imageのlayoutをshader readonly optimalに変更
+        cmd_image_barriers(
+            command_buffer,
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::NONE,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+            vk::AccessFlags2::NONE,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            &image,
+        );
+        command_buffer.end_command_buffer();
+
+        let fence = create_fence(device);
+        device.queue_submit(
+            queue_handles.transfer.queue,
+            std::slice::from_ref(
+                &vk::SubmitInfo::builder()
+                    .command_buffers(&[**command_buffer])
+                    .wait_dst_stage_mask(&[])
+                    .wait_semaphores(&[]),
+            ),
+            Some(fence.clone()),
+        );
+        device.wait_fences(&[fence], u64::MAX);
+    }
+
+    ImageHandles {
+        image,
+        allocation,
+        image_view,
+    }
+}
+
 /// samplerをNEARESTで作成するヘルパー関数
 pub fn create_sampler(device: &crate::DeviceHandle) -> crate::SamplerHandle {
     let create_info = vk::SamplerCreateInfo::builder()

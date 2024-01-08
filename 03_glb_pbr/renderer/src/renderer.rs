@@ -4,18 +4,6 @@ use bytemuck;
 use crate::NextImage;
 
 #[repr(C)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-}
-
-#[repr(C)]
-struct Material {
-    color: [f32; 3],
-    ty: u32,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct PushConstants {
     camera_rotate: glam::Mat4,
@@ -62,8 +50,8 @@ pub struct Renderer {
     accumulate_storage_image_index: u32,
     final_storage_image_indices: [u32; 2],
 
-    blas_list: Option<Vec<ashtray::utils::BlasObjects>>,
-    tlas: Option<ashtray::utils::TlasObjects>,
+    scene_objects: Option<crate::scene::SceneObjects>,
+
     ray_tracing_pipeline: Option<ashtray::RayTracingPipelineHandle>,
     ray_tracing_pipeline_layout: Option<ashtray::PipelineLayoutHandle>,
     acceleration_structure_descriptor_set:
@@ -219,8 +207,7 @@ impl Renderer {
             accumulate_storage_image_index,
             final_storage_image_indices,
 
-            blas_list: None,
-            tlas: None,
+            scene_objects: None,
             ray_tracing_pipeline: None,
             ray_tracing_pipeline_layout: None,
             acceleration_structure_descriptor_set: None,
@@ -244,87 +231,98 @@ impl Renderer {
 
     pub fn load_scene(&mut self, scene: &crate::Scene) {
         // blas/tlasの構築
-        let blas_list = scene
-            .meshes
-            .iter()
-            .map(|mesh| {
-                let (models, _) = tobj::load_obj(&mesh.path, &tobj::GPU_LOAD_OPTIONS).unwrap();
-                let mut vertices = vec![];
-                let model = &models[0];
-                let mesh = &model.mesh;
-                for i in 0..mesh.positions.len() / 3 {
-                    vertices.push(Vertex {
-                        position: [
-                            mesh.positions[i * 3],
-                            mesh.positions[i * 3 + 1],
-                            mesh.positions[i * 3 + 2],
-                        ],
-                        normal: [
-                            mesh.normals[i * 3],
-                            mesh.normals[i * 3 + 1],
-                            mesh.normals[i * 3 + 2],
-                        ],
-                    });
-                }
-                let indices = mesh.indices.clone();
+        // let blas_list = scene
+        //     .meshes
+        //     .iter()
+        //     .map(|mesh| {
+        //         let (models, _) = tobj::load_obj(&mesh.path, &tobj::GPU_LOAD_OPTIONS).unwrap();
+        //         let mut vertices = vec![];
+        //         let model = &models[0];
+        //         let mesh = &model.mesh;
+        //         for i in 0..mesh.positions.len() / 3 {
+        //             vertices.push(Vertex {
+        //                 position: [
+        //                     mesh.positions[i * 3],
+        //                     mesh.positions[i * 3 + 1],
+        //                     mesh.positions[i * 3 + 2],
+        //                 ],
+        //                 normal: [
+        //                     mesh.normals[i * 3],
+        //                     mesh.normals[i * 3 + 1],
+        //                     mesh.normals[i * 3 + 2],
+        //                 ],
+        //             });
+        //         }
+        //         let indices = mesh.indices.clone();
 
-                let blas = ashtray::utils::cerate_blas(
-                    &self.device,
-                    &self.queue_handles,
-                    &self.compute_command_pool,
-                    &self.allocator,
-                    &vertices,
-                    &indices,
-                );
+        //         let blas = ashtray::utils::cerate_blas(
+        //             &self.device,
+        //             &self.queue_handles,
+        //             &self.compute_command_pool,
+        //             &self.allocator,
+        //             &vertices,
+        //             &indices,
+        //         );
 
-                blas
-            })
-            .collect::<Vec<_>>();
+        //         blas
+        //     })
+        //     .collect::<Vec<_>>();
 
-        let materials = scene
-            .materials
-            .iter()
-            .map(|material| Material {
-                color: material.color.into(),
-                ty: material.ty as u32,
-            })
-            .collect::<Vec<_>>();
+        // let materials = scene
+        //     .materials
+        //     .iter()
+        //     .map(|material| Material {
+        //         color: material.color.into(),
+        //         ty: material.ty as u32,
+        //     })
+        //     .collect::<Vec<_>>();
 
-        let instances = scene
-            .instances
-            .iter()
-            .map(|instance| {
-                let transform = instance.transform;
-                let blas = blas_list[instance.mesh_index].clone();
-                (blas, transform, instance.material_index as u32)
-            })
-            .collect::<Vec<_>>();
+        // let instances = scene
+        //     .instances
+        //     .iter()
+        //     .map(|instance| {
+        //         let transform = instance.transform;
+        //         let blas = blas_list[instance.mesh_index].clone();
+        //         (blas, transform, instance.material_index as u32)
+        //     })
+        //     .collect::<Vec<_>>();
 
-        let tlas = ashtray::utils::create_tlas(
+        // let tlas = ashtray::utils::create_tlas(
+        //     &self.device,
+        //     &self.queue_handles,
+        //     &self.compute_command_pool,
+        //     &self.transfer_command_pool,
+        //     &self.allocator,
+        //     &instances,
+        //     &materials,
+        // );
+
+        let scene_objects = crate::scene::load_scene(
             &self.device,
             &self.queue_handles,
             &self.compute_command_pool,
             &self.transfer_command_pool,
             &self.allocator,
-            &instances,
-            &materials,
+            &self.descriptor_sets,
+            scene,
         );
 
         let instance_params_buffer_index = 0;
         self.descriptor_sets.storage_buffer.update(
-            &tlas.instance_params_buffer.buffer,
+            &scene_objects.tlas.instance_params_buffer.buffer,
             instance_params_buffer_index,
         );
         let materials_buffer_index = 1;
-        self.descriptor_sets
-            .storage_buffer
-            .update(&tlas.materials_buffer.buffer, materials_buffer_index);
+        self.descriptor_sets.storage_buffer.update(
+            &scene_objects.tlas.materials_buffer.buffer,
+            materials_buffer_index,
+        );
 
         // acceleration structureのdescriptor setの作成
         let acceleration_structure_descriptor_set =
             ashtray::utils::DescriptorSetAccelerationStructureHandles::create(
                 &self.device,
-                &tlas.tlas,
+                &scene_objects.tlas.tlas,
             );
 
         // ray tracing pipelineの作成
@@ -380,8 +378,7 @@ impl Renderer {
             1,
         );
 
-        self.blas_list = Some(blas_list);
-        self.tlas = Some(tlas);
+        self.scene_objects = Some(scene_objects);
         self.ray_tracing_pipeline = Some(ray_tracing_pipeline);
         self.ray_tracing_pipeline_layout = Some(pipeline_layout);
         self.acceleration_structure_descriptor_set = Some(acceleration_structure_descriptor_set);
@@ -651,11 +648,11 @@ impl Renderer {
     // finalしつつtextureに結果を焼き込む
     fn take_image(&mut self) -> crate::NextImage {
         let image_handles = &self.images[self.current_image_index];
-        let fences = [self.final_fences[self.current_image_index].clone()];
+        // let fences = [self.final_fences[self.current_image_index].clone()];
         let command_buffer = self.final_command_buffers[self.current_image_index].clone();
 
-        self.device.wait_fences(&fences, u64::MAX);
-        self.device.reset_fences(&fences);
+        // self.device.wait_fences(&fences, u64::MAX);
+        // self.device.reset_fences(&fences);
 
         command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
 
@@ -730,6 +727,9 @@ impl Renderer {
     }
 
     pub fn render(&mut self, parameters: crate::Parameters) -> NextImage {
+        let fences = [self.final_fences[self.current_image_index].clone()];
+        self.device.wait_fences(&fences, u64::MAX);
+        self.device.reset_fences(&fences);
         self.set_parameters(parameters);
         self.ray_trace();
         self.take_image()

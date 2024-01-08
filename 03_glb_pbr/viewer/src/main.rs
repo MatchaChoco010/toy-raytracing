@@ -81,93 +81,84 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
 
         // load scene
         let scene = renderer::Scene {
-            materials: vec![
-                renderer::Material {
-                    color: glam::vec3(1.0, 1.0, 1.0),
-                    ty: 0,
+            glbs: vec![
+                renderer::Glb {
+                    path: "assets/glb/floor.glb".into(),
                 },
-                renderer::Material {
-                    color: glam::vec3(1.0, 0.0, 0.0),
-                    ty: 0,
+                renderer::Glb {
+                    path: "assets/glb/ceil.glb".into(),
                 },
-                renderer::Material {
-                    color: glam::vec3(0.0, 1.0, 0.0),
-                    ty: 0,
+                renderer::Glb {
+                    path: "assets/glb/right.glb".into(),
                 },
-                renderer::Material {
-                    color: glam::vec3(10.0, 10.0, 10.0),
-                    ty: 1,
+                renderer::Glb {
+                    path: "assets/glb/left.glb".into(),
                 },
-                renderer::Material {
-                    color: glam::vec3(1.0, 1.0, 1.0),
-                    ty: 2,
+                renderer::Glb {
+                    path: "assets/glb/light.glb".into(),
                 },
-            ],
-            meshes: vec![
-                renderer::Mesh {
-                    path: "assets/bunny.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/back.glb".into(),
                 },
-                renderer::Mesh {
-                    path: "assets/box.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/bunny1.glb".into(),
                 },
-                renderer::Mesh {
-                    path: "assets/hidari.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/bunny2.glb".into(),
                 },
-                renderer::Mesh {
-                    path: "assets/migi.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/bunny3.glb".into(),
                 },
-                renderer::Mesh {
-                    path: "assets/oku.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/bunny4.glb".into(),
                 },
-                renderer::Mesh {
-                    path: "assets/tenjou.obj".into(),
-                },
-                renderer::Mesh {
-                    path: "assets/yuka.obj".into(),
-                },
-                renderer::Mesh {
-                    path: "assets/light.obj".into(),
+                renderer::Glb {
+                    path: "assets/glb/bunny5.glb".into(),
                 },
             ],
             instances: vec![
                 renderer::Instance {
-                    mesh_index: 0,
-                    material_index: 4,
+                    glb_index: 0,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 1,
-                    material_index: 0,
+                    glb_index: 1,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 2,
-                    material_index: 1,
+                    glb_index: 2,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 3,
-                    material_index: 2,
+                    glb_index: 3,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 4,
-                    material_index: 0,
+                    glb_index: 4,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 5,
-                    material_index: 0,
+                    glb_index: 5,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 6,
-                    material_index: 0,
+                    glb_index: 6,
                     transform: glam::Mat4::IDENTITY,
                 },
                 renderer::Instance {
-                    mesh_index: 7,
-                    material_index: 3,
+                    glb_index: 7,
+                    transform: glam::Mat4::IDENTITY,
+                },
+                renderer::Instance {
+                    glb_index: 8,
+                    transform: glam::Mat4::IDENTITY,
+                },
+                renderer::Instance {
+                    glb_index: 9,
+                    transform: glam::Mat4::IDENTITY,
+                },
+                renderer::Instance {
+                    glb_index: 10,
                     transform: glam::Mat4::IDENTITY,
                 },
             ],

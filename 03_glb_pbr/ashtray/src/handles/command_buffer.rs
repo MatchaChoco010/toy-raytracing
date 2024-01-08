@@ -133,6 +133,25 @@ impl CommandBufferHandle {
         }
     }
 
+    /// copy buffer to imageコマンドを積む
+    pub fn cmd_copy_buffer_to_image(
+        &self,
+        src_buffer: &crate::BufferHandle,
+        dst_image: &crate::ImageHandle,
+        dst_image_layout: vk::ImageLayout,
+        regions: &[vk::BufferImageCopy],
+    ) {
+        unsafe {
+            self.data().device.cmd_copy_buffer_to_image(
+                self.command_buffer_raw(),
+                **src_buffer,
+                **dst_image,
+                dst_image_layout,
+                regions,
+            )
+        }
+    }
+
     /// pipeline barrier2コマンドを積む
     pub fn cmd_pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         unsafe {
