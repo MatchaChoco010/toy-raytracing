@@ -155,7 +155,7 @@ impl Renderer {
                 .push_constant_ranges(&[vk::PushConstantRange {
                     stage_flags: vk::ShaderStageFlags::COMPUTE,
                     offset: 0,
-                    size: std::mem::size_of::<u32>() as u32 * 3,
+                    size: std::mem::size_of::<u32>() as u32 * 4,
                 }]),
         );
         let final_compute_shader_module = ashtray::utils::create_shader_module(
@@ -230,73 +230,6 @@ impl Renderer {
     }
 
     pub fn load_scene(&mut self, scene: &crate::Scene) {
-        // blas/tlasの構築
-        // let blas_list = scene
-        //     .meshes
-        //     .iter()
-        //     .map(|mesh| {
-        //         let (models, _) = tobj::load_obj(&mesh.path, &tobj::GPU_LOAD_OPTIONS).unwrap();
-        //         let mut vertices = vec![];
-        //         let model = &models[0];
-        //         let mesh = &model.mesh;
-        //         for i in 0..mesh.positions.len() / 3 {
-        //             vertices.push(Vertex {
-        //                 position: [
-        //                     mesh.positions[i * 3],
-        //                     mesh.positions[i * 3 + 1],
-        //                     mesh.positions[i * 3 + 2],
-        //                 ],
-        //                 normal: [
-        //                     mesh.normals[i * 3],
-        //                     mesh.normals[i * 3 + 1],
-        //                     mesh.normals[i * 3 + 2],
-        //                 ],
-        //             });
-        //         }
-        //         let indices = mesh.indices.clone();
-
-        //         let blas = ashtray::utils::cerate_blas(
-        //             &self.device,
-        //             &self.queue_handles,
-        //             &self.compute_command_pool,
-        //             &self.allocator,
-        //             &vertices,
-        //             &indices,
-        //         );
-
-        //         blas
-        //     })
-        //     .collect::<Vec<_>>();
-
-        // let materials = scene
-        //     .materials
-        //     .iter()
-        //     .map(|material| Material {
-        //         color: material.color.into(),
-        //         ty: material.ty as u32,
-        //     })
-        //     .collect::<Vec<_>>();
-
-        // let instances = scene
-        //     .instances
-        //     .iter()
-        //     .map(|instance| {
-        //         let transform = instance.transform;
-        //         let blas = blas_list[instance.mesh_index].clone();
-        //         (blas, transform, instance.material_index as u32)
-        //     })
-        //     .collect::<Vec<_>>();
-
-        // let tlas = ashtray::utils::create_tlas(
-        //     &self.device,
-        //     &self.queue_handles,
-        //     &self.compute_command_pool,
-        //     &self.transfer_command_pool,
-        //     &self.allocator,
-        //     &instances,
-        //     &materials,
-        // );
-
         let scene_objects = crate::scene::load_scene(
             &self.device,
             &self.queue_handles,
@@ -685,6 +618,7 @@ impl Renderer {
                 self.sample_count,
                 self.accumulate_storage_image_index,
                 self.final_storage_image_indices[self.current_image_index],
+                self.l_white.to_bits(),
             ],
         );
         command_buffer.cmd_dispatch((self.width + 7) / 8, (self.height + 7) / 8, 1);

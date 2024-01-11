@@ -18,6 +18,7 @@
 			"aabb",
 			"Bindless",
 			"blas",
+			"brdf",
 			"bytemuck",
 			"closesthit",
 			"egui",

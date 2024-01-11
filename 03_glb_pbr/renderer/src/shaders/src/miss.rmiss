@@ -1,28 +1,8 @@
 #version 460
-#extension GL_EXT_ray_tracing : enable
+#extension GL_GOOGLE_include_directive : enable
 
-struct Material {
-  vec4 baseColorFactor;
-  int baseColorTextureIndex;
-  vec3 emissiveFactor;
-  int emissiveTextureIndex;
-  float metallicFactor;
-  int metallicTextureIndex;
-  float roughnessFactor;
-  int roughnessTextureIndex;
-  float normalFactor;
-  int normalTextureIndex;
-  uint ty;
-};
-
-struct Prd {
-  Material material;
-  uint miss;
-  vec3 hitPosition;
-  vec3 hitGeometryNormal;
-  vec3 hitShadingNormal;
-  vec2 hitTexCoord;
-};
+#include "common.glsl"
+#include "payload.glsl"
 
 layout(location = 0) rayPayloadInEXT Prd prd;
 

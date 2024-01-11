@@ -1,94 +1,13 @@
 #version 460
-#extension GL_EXT_nonuniform_qualifier : enable
-#extension GL_EXT_ray_tracing : enable
-#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_GOOGLE_include_directive : enable
 
-#define PI 3.1415926535897932384626433832795
-
-struct Material {
-  vec4 baseColorFactor;
-  int baseColorTextureIndex;
-  vec3 emissiveFactor;
-  int emissiveTextureIndex;
-  float metallicFactor;
-  int metallicTextureIndex;
-  float roughnessFactor;
-  int roughnessTextureIndex;
-  float normalFactor;
-  int normalTextureIndex;
-  uint ty;
-};
-
-struct InstanceParam {
-  uint64_t indexBuffer;
-  uint64_t vertexBuffer;
-  mat4 transform;
-  uint materialIndex;
-  uint padding1;
-  uint64_t padding2;
-};
-
-struct Prd {
-  Material material;
-  uint miss;
-  vec3 hitPosition;
-  vec3 hitGeometryNormal;
-  vec3 hitShadingNormal;
-  vec2 hitTexCoord;
-};
+#include "common.glsl"
+#include "materials.glsl"
+#include "payload.glsl"
+#include "push_constants.glsl"
+#include "random.glsl"
 
 layout(location = 0) rayPayloadEXT Prd prd;
-
-layout(set = 1, binding = 0) uniform sampler2D images[];
-layout(set = 2, binding = 0) readonly buffer Materials {
-  Material materials[];
-};
-layout(set = 2, binding = 0) readonly buffer InstanceParams {
-  InstanceParam instanceParams[];
-};
-layout(set = 3, binding = 0,
-       rgba32f) uniform readonly image2D storageReadImages[];
-layout(set = 3, binding = 0,
-       rgba32f) uniform writeonly image2D storageWriteImages[];
-layout(set = 4, binding = 0) uniform accelerationStructureEXT topLevelAS;
-
-layout(push_constant) uniform PushConstants {
-  mat4 cameraRotate;
-  vec3 cameraTranslate;
-  uint seed;
-  uint maxRecursionDepth;
-  float lWhite;
-  uint storageImageIndex;
-  uint instanceParamsIndex;
-  uint materialsIndex;
-  uint padding;
-  uint64_t padding2;
-}
-pushConstants;
-
-uint seed;
-uint PCGHash() {
-  seed = seed * 747796405u + 2891336453u;
-  uint state = seed;
-  uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-  return (word >> 22u) ^ word;
-}
-
-float rnd1() { return PCGHash() / float(0xFFFFFFFFU); }
-
-vec2 rnd2() { return vec2(rnd1(), rnd1()); }
-
-vec3 cosineWeightedDirection(vec3 normal) {
-  vec2 rnd = rnd2();
-  float up = sqrt(rnd.x);
-  float over = sqrt(1.0 - up * up);
-  float around = rnd.y * 6.28318530718;
-  vec3 u = normalize(abs(normal.x) < 0.999 ? cross(normal, vec3(1, 0, 0))
-                                           : cross(normal, vec3(0, 1, 0)));
-  vec3 v = cross(normal, u);
-  return normalize(u * cos(around) * over + v * sin(around) * over +
-                   normal * up);
-}
 
 vec3 reinhardToneMapping(vec3 color) {
   return color / (color + vec3(1.0)) *
@@ -98,9 +17,7 @@ vec3 reinhardToneMapping(vec3 color) {
 vec3 gammaCorrection(vec3 color) { return pow(color, vec3(1.0 / 2.2)); }
 
 void main() {
-  seed =
-      pushConstants.seed +
-      (gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) * 0x12345678u;
+  init_random();
 
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
   vec2 delta = rnd2() - vec2(0.5);
@@ -134,55 +51,27 @@ void main() {
       break;
     }
 
+    origin = prd.hitPosition;
     Material material = prd.material;
-    if (material.ty == 0) {
-      // GGX + Normalized Lambert
 
-      vec3 baseColor;
-      if (material.baseColorTextureIndex == -1) {
-        baseColor = material.baseColorFactor.rgb;
-      } else {
-        baseColor =
-            material.baseColorFactor.rgb *
-            texture(images[material.baseColorTextureIndex], prd.hitTexCoord)
-                .rgb;
-      }
-      vec3 emissive;
-      if (material.emissiveTextureIndex == -1) {
-        emissive = material.emissiveFactor;
-      } else {
-        emissive =
-            material.emissiveFactor *
-            texture(images[material.emissiveTextureIndex], prd.hitTexCoord).rgb;
-      }
+    vec3 viewDirection = -direction;
+    vec3 dir;
+    vec3 weight;
+    vec3 emissive;
+    bool traceNext = evaluateStandardBrdf(prd, material, viewDirection, dir,
+                                          weight, emissive);
 
-      vec3 russianRouletteColor = baseColor + emissive;
-      float russianRouletteProbability = 1.0;
-      if (depth > 1) {
-        russianRouletteProbability =
-            min(1.0, max(russianRouletteColor.r,
-                         max(russianRouletteColor.g, russianRouletteColor.b)));
-      }
-      if (rnd1() > russianRouletteProbability) {
-        break;
-      }
-
-      origin = prd.hitPosition;
-      direction = cosineWeightedDirection(prd.hitGeometryNormal);
-      float pdf = dot(direction, prd.hitGeometryNormal) / PI;
-
-      vec3 brdf = baseColor / PI;
-
-      light += attenuation * emissive / russianRouletteProbability;
-      attenuation *= brdf * max(dot(prd.hitShadingNormal, direction), 0) / pdf /
-                     russianRouletteProbability;
-    } else {
-      light = vec3(1.0, 1.0, 0.0);
+    if (!traceNext) {
+      light += attenuation * emissive;
       break;
     }
+
+    direction = dir;
+    light += attenuation * emissive;
+    attenuation *= weight;
   }
 
-  vec3 rgb = gammaCorrection(reinhardToneMapping(light));
+  vec3 rgb = light;
 
   vec4 prev = imageLoad(storageReadImages[pushConstants.storageImageIndex],
                         ivec2(gl_LaunchIDEXT.xy));

@@ -371,6 +371,18 @@ pub fn create_sampler(device: &crate::DeviceHandle) -> crate::SamplerHandle {
     device.create_sampler(&create_info)
 }
 
+/// samplerをLinearで作成するヘルパー関数
+pub fn create_sampler_image(device: &crate::DeviceHandle) -> crate::SamplerHandle {
+    let create_info = vk::SamplerCreateInfo::builder()
+        .address_mode_u(vk::SamplerAddressMode::REPEAT)
+        .address_mode_v(vk::SamplerAddressMode::REPEAT)
+        .address_mode_w(vk::SamplerAddressMode::REPEAT)
+        .mag_filter(vk::Filter::LINEAR)
+        .min_filter(vk::Filter::LINEAR)
+        .mipmap_mode(vk::SamplerMipmapMode::LINEAR);
+    device.create_sampler(&create_info)
+}
+
 /// BindlessなDescriptorSetをまとめた構造体
 pub struct BindlessDescriptorSets {
     /// uniform bufferのdescriptor set

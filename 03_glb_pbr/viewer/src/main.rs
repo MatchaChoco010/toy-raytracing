@@ -196,7 +196,7 @@ fn main() {
         RunOption {
             viewport_builder: Some(
                 egui::ViewportBuilder::default()
-                    .with_title("02_toy_vk-viewer")
+                    .with_title("03_glb_pbr")
                     .with_inner_size(egui::vec2(1400.0, 800.0)),
             ),
             present_mode: vk::PresentModeKHR::MAILBOX,

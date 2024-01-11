@@ -53,7 +53,7 @@ pub(crate) fn load_scene(
     descriptor_sets: &ashtray::utils::BindlessDescriptorSets,
     scene: &Scene,
 ) -> SceneObjects {
-    let sampler = ashtray::utils::create_sampler(device);
+    let sampler = ashtray::utils::create_sampler_image(device);
     let mut images = vec![];
     let mut blas_list = vec![];
     let mut materials = vec![];
@@ -218,7 +218,7 @@ pub(crate) fn load_scene(
                     -1
                 };
 
-                let emissive_factor = material.emissive.factor * 10.0;
+                let emissive_factor = material.emissive.factor * 5.0;
                 let emissive_texture_index = if let Some(texture) = &material.emissive.texture {
                     let data = texture
                         .enumerate_pixels()
