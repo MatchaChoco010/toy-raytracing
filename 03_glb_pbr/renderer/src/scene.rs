@@ -19,7 +19,7 @@ pub struct Scene {
 pub(crate) struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
-    tangent: [f32; 4],
+    tangent: [f32; 3],
     tex_coords: [f32; 2],
 }
 
@@ -67,15 +67,35 @@ pub(crate) fn load_scene(
                 let indices = model.indices().unwrap();
                 let material = model.material();
 
-                let vertices = vertices
+                let mut vertices = vertices
                     .iter()
                     .map(|v| Vertex {
                         position: [v.position.x, v.position.y, v.position.z],
                         normal: [v.normal.x, v.normal.y, v.normal.z],
-                        tangent: [v.tangent.x, v.tangent.y, v.tangent.z, v.tangent.w],
+                        tangent: [0.0, 0.0, 0.0],
                         tex_coords: [v.tex_coords.x, v.tex_coords.y],
                     })
                     .collect::<Vec<_>>();
+                // UVからtangentの計算
+                for index in indices.chunks(3) {
+                    let idx0 = index[0] as usize;
+                    let idx1 = index[1] as usize;
+                    let idx2 = index[2] as usize;
+                    let dv1 = glam::Vec3::from_array(vertices[idx1].position)
+                        - glam::Vec3::from_array(vertices[idx0].position);
+                    let dv2 = glam::Vec3::from_array(vertices[idx2].position)
+                        - glam::Vec3::from_array(vertices[idx0].position);
+                    let duv1 = glam::Vec2::from_array(vertices[idx1].tex_coords)
+                        - glam::Vec2::from_array(vertices[idx0].tex_coords);
+                    let duv2 = glam::Vec2::from_array(vertices[idx2].tex_coords)
+                        - glam::Vec2::from_array(vertices[idx0].tex_coords);
+                    let r = 1.0 / (duv1.x * duv2.y - duv1.y * duv2.x);
+                    let tangent = (dv1 * duv2.y - dv2 * duv1.y) * r;
+
+                    vertices[idx0].tangent = tangent.to_array();
+                    vertices[idx1].tangent = tangent.to_array();
+                    vertices[idx2].tangent = tangent.to_array();
+                }
 
                 let blas = ashtray::utils::cerate_blas(
                     device,
@@ -201,7 +221,7 @@ pub(crate) fn load_scene(
                         texture.width(),
                         texture.height(),
                         &data,
-                        vk::Format::R8G8B8A8_SRGB,
+                        vk::Format::R8G8B8A8_UNORM,
                         vk::ImageUsageFlags::SAMPLED,
                     );
                     let image_index = images.len();
@@ -232,7 +252,7 @@ pub(crate) fn load_scene(
                         texture.width(),
                         texture.height(),
                         &data,
-                        vk::Format::R8G8B8A8_UNORM,
+                        vk::Format::R8G8B8A8_SRGB,
                         vk::ImageUsageFlags::SAMPLED,
                     );
                     let image_index = images.len();

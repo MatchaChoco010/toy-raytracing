@@ -41,7 +41,7 @@ struct InstanceParam {
 struct Vertex {
   vec3 position;
   vec3 normal;
-  vec4 tangent;
+  vec3 tangent;
   vec2 texCoord;
 };
 

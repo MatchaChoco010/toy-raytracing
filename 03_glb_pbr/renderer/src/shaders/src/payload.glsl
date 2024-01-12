@@ -9,6 +9,7 @@ struct Prd {
   vec3 hitPosition;
   vec3 hitGeometryNormal;
   vec3 hitShadingNormal;
+  vec3 hitTangent;
   vec2 hitTexCoord;
 };
 

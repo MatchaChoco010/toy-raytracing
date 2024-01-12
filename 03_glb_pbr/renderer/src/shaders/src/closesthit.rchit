@@ -33,6 +33,10 @@ void main() {
                   barycentricCoords.y * v1.texCoord +
                   barycentricCoords.z * v2.texCoord;
 
+  vec3 tangent = barycentricCoords.x * v0.tangent +
+                 barycentricCoords.y * v1.tangent +
+                 barycentricCoords.z * v2.tangent;
+
   Material material = GetResource(Materials, pushConstants.materialsIndex)
                           .items[instanceParam.materialIndex];
 
@@ -46,6 +50,7 @@ void main() {
   prd.hitGeometryNormal = geometryNormal;
   prd.hitShadingNormal = normal;
   prd.hitTexCoord = texCoord;
+  prd.hitTangent = normalize(tangent);
   prd.material = material;
   prd.miss = 0;
 }

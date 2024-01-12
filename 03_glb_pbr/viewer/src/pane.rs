@@ -54,10 +54,8 @@ impl Pane {
                             ui.add(egui::widgets::DragValue::new(&mut state.max_sample_count));
                             ui.end_row();
 
-                            ui.add(egui::widgets::Checkbox::new(
-                                &mut state.fit_view,
-                                "fit view",
-                            ));
+                            ui.label("fit view");
+                            ui.add(egui::widgets::Checkbox::without_text(&mut state.fit_view));
                             ui.end_row();
 
                             ui.label("size: ");

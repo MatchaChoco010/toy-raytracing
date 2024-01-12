@@ -85,28 +85,34 @@ MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
   if (material.normalTextureIndex == -1) {
     geometryNormal = normalize(prd.hitGeometryNormal);
     shadingNormal = normalize(prd.hitShadingNormal);
+    if (dot(geometryNormal, viewDirection) < 0.0) {
+      geometryNormal = -geometryNormal;
+    }
+    if (dot(shadingNormal, geometryNormal) < 0.0) {
+      shadingNormal = -shadingNormal;
+    }
   } else {
     geometryNormal = normalize(prd.hitGeometryNormal);
     shadingNormal = normalize(prd.hitShadingNormal);
-    vec3 normalFromTexture = normalize(
-        texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb *
-            2.0 -
-        1.0);
-    vec3 tangent;
-    if (abs(dot(shadingNormal, vec3(0.0, 0.0, 1.0))) < 0.999) {
-      tangent = normalize(cross(shadingNormal, vec3(0.0, 0.0, 1.0)));
-    } else {
-      tangent = normalize(cross(shadingNormal, vec3(0.0, 1.0, 0.0)));
+    vec3 tangent = normalize(prd.hitTangent);
+    if (dot(geometryNormal, viewDirection) < 0.0) {
+      geometryNormal = -geometryNormal;
+    }
+    if (dot(shadingNormal, geometryNormal) < 0.0) {
+      shadingNormal = -shadingNormal;
+      tangent = -tangent;
     }
     vec3 bitangent = cross(shadingNormal, tangent);
-    mat3 tbn = mat3(tangent, bitangent, prd.hitShadingNormal);
-    shadingNormal = normalize(tbn * normalFromTexture);
-  }
-  if (dot(geometryNormal, viewDirection) < 0.0) {
-    geometryNormal = -geometryNormal;
-  }
-  if (dot(shadingNormal, geometryNormal) < 0.0) {
-    shadingNormal = -shadingNormal;
+    tangent = cross(bitangent, shadingNormal);
+    mat3 tbn = mat3(tangent, bitangent, shadingNormal);
+
+    vec3 normalFromTexture =
+        texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb;
+    normalFromTexture = normalize(normalFromTexture * 2.0 - 1.0);
+    normalFromTexture = normalize(tbn * normalFromTexture);
+
+    shadingNormal =
+        normalize(mix(shadingNormal, normalFromTexture, material.normalFactor));
   }
 
   MaterialData data;
@@ -139,13 +145,13 @@ BrdfData getBrdfData(Prd prd, MaterialData material, vec3 viewDirection) {
     tangent = normalize(cross(material.shadingNormal, vec3(0.0, 1.0, 0.0)));
   }
   vec3 bitangent = cross(material.shadingNormal, tangent);
-  mat3 tbn = mat3(tangent, bitangent, prd.hitShadingNormal);
+  mat3 tbn = mat3(tangent, bitangent, material.shadingNormal);
 
   BrdfData data;
   data.specularF0 =
       baseColorToSpecularF0(material.baseColor, material.metallic);
-  data.diffuseReflectance =
-      baseColorToDiffuseReflectance(material.baseColor, material.metallic);
+  data.diffuseReflectance = material.baseColor;
+  // baseColorToDiffuseReflectance(material.baseColor, material.metallic);
   data.alpha = material.roughness * material.roughness;
   data.V = normalize(inverse(tbn) * viewDirection);
   data.N = vec3(0.0, 0.0, 1.0);
@@ -168,7 +174,6 @@ vec3 cosineWeightedDirection(BrdfData brdf) {
 
 vec3 getDiffuseBrdf(BrdfData brdf, MaterialData material) {
   return brdf.diffuseReflectance / PI;
-  // return vec3(1.0, 0.5, 0.3) / PI;
 }
 
 float getDiffusePdf(BrdfData brdf, MaterialData material, vec3 L) {
@@ -250,9 +255,44 @@ vec3 sampleGGXVNDF(BrdfData brdf, vec3 L) {
   return weight;
 }
 
-bool evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
-                          out vec3 outDirection, out vec3 brdfWeight,
+// viewDirectionとoutDirectionを与えたときのBRDFの重みを計算する
+void evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
+                          vec3 outDirection, out vec3 brdfWeight,
                           out vec3 emissive) {
+  MaterialData materialData = getMaterialData(prd, material, viewDirection);
+
+  brdfWeight = vec3(0.0);
+  emissive = materialData.emissive;
+  if (dot(materialData.shadingNormal, viewDirection) <= 0.0) {
+    return;
+  }
+  if (dot(outDirection, prd.hitGeometryNormal) <= 0.0) {
+    return;
+  }
+
+  BrdfData brdfData = getBrdfData(prd, materialData, viewDirection);
+
+  float NoV = clamp(dot(brdfData.N, brdfData.V), 0.00001, 1.0);
+  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
+  kD *= 1.0 - materialData.metallic;
+  kD = clamp(kD, 0.0, 1.0);
+
+  vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
+  brdfWeight = vec3(0.0);
+
+  vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
+  brdfWeight += (kD / (1.0 + kD)) * diffuseBrdf;
+
+  float specularPdf = getPdfGGX(brdfData, materialData, L);
+  vec3 specularWeight = sampleGGXVNDF(brdfData, L);
+  vec3 specularBrdf = specularWeight * specularPdf;
+  brdfWeight += (1.0 / (1.0 + kD)) * specularBrdf;
+}
+
+// viewDirectionを与えたときにoutDirectionをサンプリングしてBRDFの重みを計算する
+bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
+                        out vec3 outDirection, out vec3 brdfWeight,
+                        out vec3 emissive) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
 
   emissive = materialData.emissive;
@@ -262,15 +302,6 @@ bool evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
 
   BrdfData brdfData = getBrdfData(prd, materialData, viewDirection);
 
-  float russianRouletteProbability =
-      max(max(max(brdfData.specularF0.r, brdfData.specularF0.g),
-              brdfData.specularF0.b),
-          max(max(brdfData.diffuseReflectance.r, brdfData.diffuseReflectance.g),
-              brdfData.diffuseReflectance.b));
-  if (rnd1() > russianRouletteProbability) {
-    return false;
-  }
-
   float NoV = clamp(dot(brdfData.N, brdfData.V), 0.00001, 1.0);
   float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   kD *= 1.0 - materialData.metallic;
@@ -278,46 +309,30 @@ bool evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
 
   vec3 L;
   float rnd = rnd1();
-  if (rnd < kD) {
+  if (rnd < kD / (1.0 + kD)) {
     L = cosineWeightedDirection(brdfData);
+
+    float pdf = kD / (1.0 + kD) * getDiffusePdf(brdfData, materialData, L) +
+                1.0 / (1.0 + kD) * getPdfGGX(brdfData, materialData, L);
+
+    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
+    brdfWeight = diffuseBrdf / pdf;
   } else {
     L = sampleDirectionGGX(brdfData);
-  }
-  outDirection = normalize(brdfData.tbn * L);
 
+    float pdf = kD / (1.0 + kD) * getDiffusePdf(brdfData, materialData, L) +
+                1.0 / (1.0 + kD) * getPdfGGX(brdfData, materialData, L);
+
+    // specularWeight は specularBRDF / specularPdf
+    vec3 specularWeight = sampleGGXVNDF(brdfData, L);
+    vec3 specularBrdf = specularWeight * getPdfGGX(brdfData, materialData, L);
+    brdfWeight = specularBrdf / pdf;
+  }
+
+  outDirection = normalize(brdfData.tbn * L);
   if (dot(outDirection, prd.hitGeometryNormal) <= 0.0) {
     return false;
   }
-
-  float aD = kD / (1.0 + kD);
-  float aS = 1.0 / (1.0 + kD);
-
-  float diffusePdf = getDiffusePdf(brdfData, materialData, L);
-  float specularPdf = getPdfGGX(brdfData, materialData, L);
-
-  if (diffusePdf == 0.0 && specularPdf == 0.0) {
-    return false;
-  } else if (isinf(diffusePdf) || isnan(diffusePdf) || diffusePdf == 0.0) {
-    // specularWeight = specularBrdf / specularPdf
-    vec3 specularWeight = sampleGGXVNDF(brdfData, L);
-    brdfWeight = specularWeight;
-  } else if (isinf(specularPdf) || isnan(specularPdf) || specularPdf == 0.0) {
-    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-    brdfWeight = diffuseBrdf / diffusePdf;
-  } else {
-    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-    float diffuseMisWeight =
-        aD * diffusePdf / (aD * diffusePdf + aS * specularPdf);
-    brdfWeight = diffuseMisWeight * diffuseBrdf / diffusePdf;
-
-    // specularWeight = specularBrdf / specularPdf
-    vec3 specularWeight = sampleGGXVNDF(brdfData, L);
-    float specularMisWeight =
-        aS * specularPdf / (aS * diffusePdf + aS * specularPdf);
-    brdfWeight += specularMisWeight * specularWeight;
-  }
-
-  brdfWeight /= russianRouletteProbability;
 
   if (luminance(brdfWeight) == 0.0 || isnan(luminance(brdfWeight))) {
     return false;
