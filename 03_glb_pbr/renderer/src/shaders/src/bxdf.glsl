@@ -319,21 +319,29 @@ void evaluateBsdfWeight(Prd prd, Material material, vec3 viewDirection,
 
   if (dot(viewDirection, outDirection) > 0.9999) {
     // 透過の場合
-    vec3 transparentBrdf = vec3(1.0);
-    bsdfWeight = (1.0 - materialData.alpha) * transparentBrdf;
+
+    // transmissionColorはユーザーが与えるべき値だけど、
+    // 今回はbaseColorとalphaから適当に決める。
+    // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
+    // 適当に透過色として決めた。
+    vec3 transmissionColor = exp(
+        log(clamp(materialData.baseColor, 0.0001, 1.0)) * materialData.alpha);
+
+    vec3 transparentBtdf = transmissionColor;
+    bsdfWeight = (1.0 - materialData.alpha) * transparentBtdf;
   } else if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
     // 反射の場合
     bsdfWeight = vec3(0.0);
 
     // diffuse
     vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-    bsdfWeight += (kD / (1.0 + kD)) * materialData.alpha * diffuseBrdf;
+    bsdfWeight += (kD / (1.0 + kD)) * diffuseBrdf;
 
     // specular
     float specularPdf = getPdfGGX(brdfData, materialData, L);
     vec3 specularWeight = sampleGGXVNDF(brdfData, L);
     vec3 specularBrdf = specularWeight * specularPdf;
-    bsdfWeight += (1.0 / (1.0 + kD)) * materialData.alpha * specularBrdf;
+    bsdfWeight += (1.0 / (1.0 + kD)) * specularBrdf;
   } else {
     bsdfWeight = vec3(0.0);
   }
