@@ -11,6 +11,7 @@ struct Prd {
   vec3 hitShadingNormal;
   vec3 hitTangent;
   vec2 hitTexCoord;
+  uint depth;
 };
 
 #endif

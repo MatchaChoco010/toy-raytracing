@@ -2,6 +2,7 @@
 #define _RANDOM_GLSL_
 
 #include "common.glsl"
+#include "payload.glsl"
 #include "push_constants.glsl"
 
 uint seed;
@@ -16,10 +17,11 @@ float rnd1() { return PCGHash() / float(0xFFFFFFFFU); }
 
 vec2 rnd2() { return vec2(rnd1(), rnd1()); }
 
-void init_random() {
+void init_random(uint depth) {
   seed =
       pushConstants.seed +
-      (gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) * 0x12345678u;
+      (gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) * 0x12345678u +
+      depth * 0x87654321u;
 }
 
 #endif

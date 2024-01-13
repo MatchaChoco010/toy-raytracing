@@ -267,49 +267,41 @@ impl Renderer {
             &self.device,
             include_bytes!("./shaders/spv/miss.rmiss.spv"),
         );
-        let closest_hit_shader_module = ashtray::utils::create_shader_module(
+        let opaque_closest_hit_shader_module = ashtray::utils::create_shader_module(
             &self.device,
-            include_bytes!("./shaders/spv/closesthit.rchit.spv"),
+            include_bytes!("./shaders/spv/opaque/closesthit.rchit.spv"),
         );
-        let (ray_tracing_pipeline, pipeline_layout) = ashtray::utils::create_ray_tracing_pipelines(
-            &self.device,
-            &[raygen_shader_module],
-            &[miss_shader_module],
-            &[ashtray::utils::HitShaderModules {
-                closest_hit: closest_hit_shader_module,
-                any_hit: None,
-                intersection: None,
-            }],
-            &[
-                *self.descriptor_sets.uniform_buffer.layout.clone(),
-                *self.descriptor_sets.combined_image_sampler.layout.clone(),
-                *self.descriptor_sets.storage_buffer.layout.clone(),
-                *self.descriptor_sets.storage_image.layout.clone(),
-                *acceleration_structure_descriptor_set.layout.clone(),
-            ],
-            &[vk::PushConstantRange::builder()
-                .stage_flags(
-                    vk::ShaderStageFlags::RAYGEN_KHR
-                        | vk::ShaderStageFlags::ANY_HIT_KHR
-                        | vk::ShaderStageFlags::CLOSEST_HIT_KHR
-                        | vk::ShaderStageFlags::MISS_KHR,
-                )
-                .offset(0)
-                .size(std::mem::size_of::<PushConstants>() as u32)
-                .build()],
-        );
-
-        // shader binding tableの作成
-        let shader_binding_table = ashtray::utils::create_shader_binding_table(
-            &self.instance,
-            self.physical_device,
-            &self.device,
-            &self.allocator,
-            &ray_tracing_pipeline,
-            1,
-            1,
-            1,
-        );
+        let (ray_tracing_pipeline, pipeline_layout, shader_binding_table) =
+            ashtray::utils::create_ray_tracing_pipelines(
+                &self.instance,
+                self.physical_device,
+                &self.device,
+                &self.allocator,
+                &[raygen_shader_module],
+                &[miss_shader_module],
+                &[ashtray::utils::HitShaderModules {
+                    closest_hit: opaque_closest_hit_shader_module,
+                    any_hit: None,
+                    intersection: None,
+                }],
+                &[
+                    *self.descriptor_sets.uniform_buffer.layout.clone(),
+                    *self.descriptor_sets.combined_image_sampler.layout.clone(),
+                    *self.descriptor_sets.storage_buffer.layout.clone(),
+                    *self.descriptor_sets.storage_image.layout.clone(),
+                    *acceleration_structure_descriptor_set.layout.clone(),
+                ],
+                &[vk::PushConstantRange::builder()
+                    .stage_flags(
+                        vk::ShaderStageFlags::RAYGEN_KHR
+                            | vk::ShaderStageFlags::ANY_HIT_KHR
+                            | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                            | vk::ShaderStageFlags::MISS_KHR,
+                    )
+                    .offset(0)
+                    .size(std::mem::size_of::<PushConstants>() as u32)
+                    .build()],
+            );
 
         self.scene_objects = Some(scene_objects);
         self.ray_tracing_pipeline = Some(ray_tracing_pipeline);

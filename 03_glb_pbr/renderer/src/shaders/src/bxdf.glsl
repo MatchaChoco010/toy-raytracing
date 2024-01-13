@@ -39,18 +39,22 @@ struct MaterialData {
   vec3 emissive;
   vec3 shadingNormal;
   vec3 geometryNormal;
+  float alpha;
   // local to world for shading normal
   mat3 tbn;
 };
 
 MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
   vec3 baseColor;
+  float alpha;
   if (material.baseColorTextureIndex == -1) {
     baseColor = material.baseColorFactor.rgb;
+    alpha = material.baseColorFactor.a;
   } else {
-    baseColor =
-        material.baseColorFactor.rgb *
-        texture(images[material.baseColorTextureIndex], prd.hitTexCoord).rgb;
+    vec4 pixel =
+        texture(images[material.baseColorTextureIndex], prd.hitTexCoord);
+    baseColor = material.baseColorFactor.rgb * pixel.rgb;
+    alpha = material.baseColorFactor.a * pixel.a;
   }
 
   vec3 emissive;
@@ -117,6 +121,7 @@ MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
 
   MaterialData data;
   data.baseColor = baseColor;
+  data.alpha = alpha;
   data.metallic = metallic;
   data.roughness = roughness;
   data.emissive = emissive;
@@ -266,9 +271,6 @@ void evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
   if (dot(materialData.shadingNormal, viewDirection) <= 0.0) {
     return;
   }
-  if (dot(outDirection, prd.hitGeometryNormal) <= 0.0) {
-    return;
-  }
 
   BrdfData brdfData = getBrdfData(prd, materialData, viewDirection);
 
@@ -280,13 +282,52 @@ void evaluateStandardBrdf(Prd prd, Material material, vec3 viewDirection,
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
   brdfWeight = vec3(0.0);
 
-  vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-  brdfWeight += (kD / (1.0 + kD)) * diffuseBrdf;
+  if (dot(viewDirection, outDirection) > 0.9999) {
+    // 透過の場合
+    vec3 transparentBrdf = vec3(1.0);
+    brdfWeight += (1.0 - materialData.alpha) * transparentBrdf;
+  } else if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
+    // 反射の場合
+    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
+    brdfWeight += (kD / (1.0 + kD)) * materialData.alpha * diffuseBrdf;
 
-  float specularPdf = getPdfGGX(brdfData, materialData, L);
-  vec3 specularWeight = sampleGGXVNDF(brdfData, L);
-  vec3 specularBrdf = specularWeight * specularPdf;
-  brdfWeight += (1.0 / (1.0 + kD)) * specularBrdf;
+    float specularPdf = getPdfGGX(brdfData, materialData, L);
+    vec3 specularWeight = sampleGGXVNDF(brdfData, L);
+    vec3 specularBrdf = specularWeight * specularPdf;
+    brdfWeight += (1.0 / (1.0 + kD)) * materialData.alpha * specularBrdf;
+  }
+}
+
+// piecewise functionの分布に従ってindexをサンプリングする
+float getPdfDistribute1D(float[3] func, out uint index) {
+  int n = func.length();
+  float[4] cdf;
+  cdf[0] = 0.0;
+  for (int i = 0; i < n; i++) {
+    cdf[i + 1] = cdf[i] + func[i];
+  }
+  float funcSum = cdf[n];
+  for (int i = 0; i < n + 1; i++) {
+    cdf[i] /= funcSum;
+  }
+
+  float u = rnd1();
+  int first = 0;
+  int len = cdf.length();
+  while (len > 0) {
+    int h = len >> 1;
+    int middle = first + h;
+    if (cdf[middle] <= u) {
+      first = middle + 1;
+      len = len - h - 1;
+    } else {
+      len = h;
+    }
+  }
+  index = clamp(first - 1, 0, n - 1);
+
+  float pdf = func[index] / funcSum;
+  return pdf;
 }
 
 // viewDirectionを与えたときにoutDirectionをサンプリングしてBRDFの重みを計算する
@@ -296,7 +337,7 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
 
   emissive = materialData.emissive;
-  if (dot(materialData.shadingNormal, viewDirection) <= 0.0) {
+  if (dot(materialData.geometryNormal, viewDirection) <= 0.0) {
     return false;
   }
 
@@ -307,31 +348,59 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
   kD *= 1.0 - materialData.metallic;
   kD = clamp(kD, 0.0, 1.0);
 
-  vec3 L;
-  float rnd = rnd1();
-  if (rnd < kD / (1.0 + kD)) {
-    L = cosineWeightedDirection(brdfData);
+  float weightSpecular = 1.0 / (1.0 + kD) * materialData.alpha;
+  float weightDiffuse = kD / (1.0 + kD) * materialData.alpha;
+  float weightTransparent = 1.0 - materialData.alpha;
+  float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
-    float pdf = kD / (1.0 + kD) * getDiffusePdf(brdfData, materialData, L) +
-                1.0 / (1.0 + kD) * getPdfGGX(brdfData, materialData, L);
+  uint bsdfType;
+  float pdfBsdfSelect = getPdfDistribute1D(func, bsdfType);
 
-    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-    brdfWeight = diffuseBrdf / pdf;
-  } else {
-    L = sampleDirectionGGX(brdfData);
-
-    float pdf = kD / (1.0 + kD) * getDiffusePdf(brdfData, materialData, L) +
-                1.0 / (1.0 + kD) * getPdfGGX(brdfData, materialData, L);
+  switch (bsdfType) {
+  case 0: {
+    // specular
+    vec3 L = sampleDirectionGGX(brdfData);
+    float pdf = getPdfGGX(brdfData, materialData, L);
+    pdf *= pdfBsdfSelect;
 
     // specularWeight は specularBRDF / specularPdf
     vec3 specularWeight = sampleGGXVNDF(brdfData, L);
     vec3 specularBrdf = specularWeight * getPdfGGX(brdfData, materialData, L);
-    brdfWeight = specularBrdf / pdf;
-  }
+    brdfWeight = weightSpecular * specularBrdf / pdf;
 
-  outDirection = normalize(brdfData.tbn * L);
-  if (dot(outDirection, prd.hitGeometryNormal) <= 0.0) {
-    return false;
+    outDirection = normalize(brdfData.tbn * L);
+    if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
+      return false;
+    }
+  } break;
+  case 1: {
+    // diffuse
+    vec3 L = cosineWeightedDirection(brdfData);
+    float pdf = getDiffusePdf(brdfData, materialData, L);
+    pdf *= pdfBsdfSelect;
+
+    vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
+    brdfWeight = weightDiffuse * diffuseBrdf / pdf;
+
+    outDirection = normalize(brdfData.tbn * L);
+    if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
+      return false;
+    }
+  } break;
+  case 2:
+    // transparent
+    vec3 L = -brdfData.V;
+    float pdf = 1.0;
+    pdf *= pdfBsdfSelect;
+
+    vec3 transparentBrdf = vec3(1.0);
+    brdfWeight = weightTransparent * transparentBrdf / pdf;
+
+    outDirection = normalize(brdfData.tbn * L);
+    if (dot(outDirection, materialData.geometryNormal) > 0.0) {
+      return false;
+    }
+    break;
   }
 
   if (luminance(brdfWeight) == 0.0 || isnan(luminance(brdfWeight))) {

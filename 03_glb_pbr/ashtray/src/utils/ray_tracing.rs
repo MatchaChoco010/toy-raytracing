@@ -22,6 +22,7 @@ pub fn cerate_blas<T>(
     allocator: &crate::AllocatorHandle,
     vertices: &[T],
     indices: &[u32],
+    transparent: bool,
 ) -> BlasObjects {
     let vertex_buffer = create_host_buffer_with_data(
         &device,
@@ -53,12 +54,14 @@ pub fn cerate_blas<T>(
         .index_data(vk::DeviceOrHostAddressConstKHR {
             device_address: index_buffer.device_address,
         });
-    let geometry = vk::AccelerationStructureGeometryKHR::builder()
+    let mut geometry = vk::AccelerationStructureGeometryKHR::builder()
         .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
         .geometry(vk::AccelerationStructureGeometryDataKHR {
             triangles: *geometry_triangle_date,
-        })
-        .flags(vk::GeometryFlagsKHR::OPAQUE);
+        });
+    if !transparent {
+        geometry = geometry.flags(vk::GeometryFlagsKHR::OPAQUE);
+    }
 
     // build geometry infoを作成
     let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
@@ -198,7 +201,7 @@ pub fn create_tlas<Material>(
     compute_command_pool: &crate::CommandPoolHandle,
     transfer_command_pool: &crate::CommandPoolHandle,
     allocator: &crate::AllocatorHandle,
-    instances: &[(BlasObjects, glam::Mat4, u32)],
+    instances: &[(BlasObjects, glam::Mat4, u32, u32)],
     materials: &[Material],
 ) -> TlasObjects {
     #[repr(C)]
@@ -215,23 +218,23 @@ pub fn create_tlas<Material>(
     // instancesを作成
     let instances_data = instances
         .iter()
-        .map(
-            |(blas, transform, _)| vk::AccelerationStructureInstanceKHR {
+        .map(|(blas, transform, _material_index, sbt_offset)| {
+            vk::AccelerationStructureInstanceKHR {
                 transform: vk::TransformMatrixKHR {
                     matrix: transform.transpose().to_cols_array()[..12]
                         .try_into()
                         .unwrap(),
                 },
                 instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
-                    0,
+                    *sbt_offset,
                     vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as u8,
                 ),
                 instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xFF),
                 acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                     device_handle: blas.blas.get_acceleration_structure_device_address(),
                 },
-            },
-        )
+            }
+        })
         .collect::<Vec<_>>();
 
     // instancesのbufferを作成
@@ -374,7 +377,7 @@ pub fn create_tlas<Material>(
     // instance paramのbufferを作成
     let instance_params = instances
         .iter()
-        .map(|(blas, transform, material)| InstanceParam {
+        .map(|(blas, transform, material, _sbt_offset)| InstanceParam {
             address_index: blas.index_buffer.device_address,
             address_vertex: blas.vertex_buffer.device_address,
             transform: transform.clone(),
@@ -420,15 +423,44 @@ pub struct HitShaderModules {
     pub intersection: Option<crate::ShaderModuleHandle>,
 }
 
+/// ShaderBindingTableのItemをまとめた構造体
+pub struct SbtItem {
+    /// ShaderBindingTableの要素のdevice address
+    pub device_address: u64,
+    /// ShaderBindingTableの要素のstride
+    pub stride: u64,
+    /// ShaderBindingTableの要素のsize
+    pub size: u64,
+}
+
+/// ShaderBindingTableをまとめた構造体
+pub struct ShaderBindingTable {
+    /// ShaderBindingTableのBufferObjects
+    pub buffer: BufferObjects,
+    /// RaygenShaderGroupのSbtItem
+    pub raygen_item: SbtItem,
+    /// MissShaderGroupのSbtItem
+    pub miss_item: SbtItem,
+    /// HitShaderGroupのSbtItem
+    pub hit_item: SbtItem,
+}
+
 /// RayTracingPipelineを作成するヘルパー関数
 pub fn create_ray_tracing_pipelines(
+    instance: &crate::InstanceHandle,
+    physical_device: vk::PhysicalDevice,
     device: &crate::DeviceHandle,
+    allocator: &crate::AllocatorHandle,
     raygen_shader_modules: &[crate::ShaderModuleHandle],
     miss_shader_modules: &[crate::ShaderModuleHandle],
     hit_shader_modules: &[HitShaderModules],
     descriptor_set_layouts: &[vk::DescriptorSetLayout],
     push_constant_ranges: &[vk::PushConstantRange],
-) -> (crate::RayTracingPipelineHandle, crate::PipelineLayoutHandle) {
+) -> (
+    crate::RayTracingPipelineHandle,
+    crate::PipelineLayoutHandle,
+    ShaderBindingTable,
+) {
     // pipeline layoutを作成
     let pipeline_layout = {
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
@@ -580,33 +612,22 @@ pub fn create_ray_tracing_pipelines(
         raytracing_pipeline
     };
 
-    (raytracing_pipeline, pipeline_layout)
+    // shader binding tableを作成
+    let shader_binding_table = create_shader_binding_table(
+        &instance,
+        physical_device,
+        &device,
+        &allocator,
+        &raytracing_pipeline,
+        raygen_shader_modules.len() as u64,
+        miss_shader_modules.len() as u64,
+        hit_shader_modules.len() as u64,
+    );
+
+    (raytracing_pipeline, pipeline_layout, shader_binding_table)
 }
 
-/// ShaderBindingTableのItemをまとめた構造体
-pub struct SbtItem {
-    /// ShaderBindingTableの要素のdevice address
-    pub device_address: u64,
-    /// ShaderBindingTableの要素のstride
-    pub stride: u64,
-    /// ShaderBindingTableの要素のsize
-    pub size: u64,
-}
-
-/// ShaderBindingTableをまとめた構造体
-pub struct ShaderBindingTable {
-    /// ShaderBindingTableのBufferObjects
-    pub buffer: BufferObjects,
-    /// RaygenShaderGroupのSbtItem
-    pub raygen_item: SbtItem,
-    /// MissShaderGroupのSbtItem
-    pub miss_item: SbtItem,
-    /// HitShaderGroupのSbtItem
-    pub hit_item: SbtItem,
-}
-
-/// ShaderBindingTableを作成するヘルパー関数
-pub fn create_shader_binding_table(
+fn create_shader_binding_table(
     instance: &crate::InstanceHandle,
     physical_device: vk::PhysicalDevice,
     device: &crate::DeviceHandle,
@@ -675,41 +696,44 @@ pub fn create_shader_binding_table(
     };
 
     // miss shader groupの書き込み
-    let miss = shader_group_handles[((handle_size * raygen_shader_group_count) as usize)
-        ..((handle_size * (raygen_shader_group_count + 1)) as usize)]
-        .to_vec();
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            miss.as_ptr(),
-            ptr.add(size_raygen as usize) as *mut u8,
-            size_miss as usize,
-        )
-    };
+    for i in 0..miss_shader_group_count {
+        let miss = shader_group_handles[((handle_size * (raygen_shader_group_count + i)) as usize)
+            ..((handle_size * (raygen_shader_group_count + i + 1)) as usize)]
+            .to_vec();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                miss.as_ptr(),
+                ptr.add((size_raygen + i * handle_size_aligned) as usize) as *mut u8,
+                handle_size as usize,
+            )
+        };
+    }
     let miss_item = SbtItem {
         device_address: buffer.device_address + size_raygen,
         stride: handle_size_aligned,
-        size: handle_size_aligned,
+        size: size_miss,
     };
 
     // hit shader groupの書き込み
-    let hit = shader_group_handles[((handle_size
-        * (raygen_shader_group_count + miss_shader_group_count))
-        as usize)
-        ..((handle_size
-            * (raygen_shader_group_count + miss_shader_group_count + hit_shader_group_count))
-            as usize)]
-        .to_vec();
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            hit.as_ptr(),
-            ptr.add((size_raygen + size_miss) as usize) as *mut u8,
-            size_hit as usize,
-        )
-    };
+    for i in 0..hit_shader_group_count {
+        let hit = shader_group_handles[((handle_size
+            * (raygen_shader_group_count + miss_shader_group_count + i))
+            as usize)
+            ..((handle_size * (raygen_shader_group_count + miss_shader_group_count + i + 1))
+                as usize)]
+            .to_vec();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                hit.as_ptr(),
+                ptr.add((size_raygen + size_miss + i * handle_size_aligned) as usize) as *mut u8,
+                handle_size as usize,
+            )
+        };
+    }
     let hit_item = SbtItem {
         device_address: buffer.device_address + size_raygen + size_miss,
         stride: handle_size_aligned,
-        size: handle_size_aligned,
+        size: size_hit,
     };
 
     ShaderBindingTable {

@@ -97,22 +97,17 @@ pub(crate) fn load_scene(
                     vertices[idx2].tangent = tangent.to_array();
                 }
 
-                let blas = ashtray::utils::cerate_blas(
-                    device,
-                    queue_handles,
-                    compute_command_pool,
-                    allocator,
-                    &vertices,
-                    &indices,
-                );
-                blas_list.push(blas);
-
+                let mut transparent_flag = false;
                 let base_color_factor = material.pbr.base_color_factor;
+                transparent_flag |= base_color_factor.w < 1.0;
                 let base_color_texture_index =
                     if let Some(texture) = &material.pbr.base_color_texture {
                         let data = texture
                             .enumerate_pixels()
-                            .flat_map(|(_x, _y, p)| p.to_rgba().0)
+                            .flat_map(|(_x, _y, p)| {
+                                transparent_flag |= p.to_rgba().0[3] < 255;
+                                p.to_rgba().0
+                            })
                             .collect::<Vec<_>>();
                         let image = ashtray::utils::create_shader_readonly_image_with_data(
                             device,
@@ -285,10 +280,20 @@ pub(crate) fn load_scene(
                     normal_texture_index,
                     emissive_factor: [emissive_factor.x, emissive_factor.y, emissive_factor.z],
                     emissive_texture_index,
-                    ty: 0,
+                    ty: if transparent_flag { 1 } else { 0 },
                 };
-
                 materials.push(material);
+
+                let blas = ashtray::utils::cerate_blas(
+                    device,
+                    queue_handles,
+                    compute_command_pool,
+                    allocator,
+                    &vertices,
+                    &indices,
+                    transparent_flag,
+                );
+                blas_list.push(blas);
             }
         }
     }
@@ -298,8 +303,10 @@ pub(crate) fn load_scene(
         let transform = instance.transform;
         let glb_index = instance.glb_index;
         let blas = blas_list[glb_index].clone();
+        // let sbt_offset = materials[glb_index].ty as u32;
+        let sbt_offset = 0 as u32;
 
-        instances.push((blas, transform, glb_index as u32));
+        instances.push((blas, transform, glb_index as u32, sbt_offset));
     }
 
     let tlas = ashtray::utils::create_tlas(
