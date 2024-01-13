@@ -115,6 +115,9 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
                 renderer::Glb {
                     path: "assets/glb/bunny5.glb".into(),
                 },
+                renderer::Glb {
+                    path: "assets/glb/untitled.glb".into(),
+                },
             ],
             instances: vec![
                 renderer::Instance {
@@ -159,6 +162,10 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
                 },
                 renderer::Instance {
                     glb_index: 10,
+                    transform: glam::Mat4::IDENTITY,
+                },
+                renderer::Instance {
+                    glb_index: 11,
                     transform: glam::Mat4::IDENTITY,
                 },
             ],

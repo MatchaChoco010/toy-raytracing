@@ -61,4 +61,48 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Vertices {
 };
 layout(buffer_reference, scalar) buffer Indices { uvec3 i[]; };
 
+vec3 rgbToHsv(vec3 rgb) {
+  float cmax = max(rgb.r, max(rgb.g, rgb.b));
+  float cmin = min(rgb.r, min(rgb.g, rgb.b));
+  float diff = cmax - cmin;
+  float h = 0.0;
+  if (diff == 0.0) {
+    h = 0.0;
+  } else if (cmax == rgb.r) {
+    h = mod((rgb.g - rgb.b) / diff, 6.0);
+  } else if (cmax == rgb.g) {
+    h = (rgb.b - rgb.r) / diff + 2.0;
+  } else if (cmax == rgb.b) {
+    h = (rgb.r - rgb.g) / diff + 4.0;
+  }
+  h /= 6.0;
+  float s = cmax == 0.0 ? 0.0 : diff / cmax;
+  float v = cmax;
+  return vec3(h, s, v);
+}
+
+vec3 hsvToRgb(vec3 hsv) {
+  float h = hsv.x * 6.0;
+  float s = hsv.y;
+  float v = hsv.z;
+  float c = v * s;
+  float x = c * (1.0 - abs(mod(h, 2.0) - 1.0));
+  float m = v - c;
+  vec3 rgb;
+  if (h < 1.0) {
+    rgb = vec3(c, x, 0.0);
+  } else if (h < 2.0) {
+    rgb = vec3(x, c, 0.0);
+  } else if (h < 3.0) {
+    rgb = vec3(0.0, c, x);
+  } else if (h < 4.0) {
+    rgb = vec3(0.0, x, c);
+  } else if (h < 5.0) {
+    rgb = vec3(x, 0.0, c);
+  } else {
+    rgb = vec3(c, 0.0, x);
+  }
+  return rgb + vec3(m);
+}
+
 #endif

@@ -388,9 +388,17 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
   kD *= 1.0 - materialData.metallic;
   kD = clamp(kD, 0.0, 1.0);
 
-  float weightSpecular = 1.0 / (1.0 + kD) * materialData.alpha;
-  float weightDiffuse = kD / (1.0 + kD) * materialData.alpha;
-  float weightTransparent = 1.0 - materialData.alpha;
+  // transmissionColorはユーザーが与えるべき値だけど、
+  // 今回はbaseColorとalphaから適当に決める。
+  // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
+  // 適当に透過色として決めた。
+  vec3 transmissionColor =
+      exp(log(clamp(materialData.baseColor, 0.0001, 1.0)) * materialData.alpha);
+
+  float weightSpecular = 1.0 / (1.0 + kD);
+  float weightDiffuse = kD / (1.0 + kD);
+  float weightTransparent =
+      (1.0 - materialData.alpha) * luminance(transmissionColor);
   float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
   uint bsdfType;
@@ -406,7 +414,7 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
     // specularWeight は specularBRDF / specularPdf
     vec3 specularWeight = sampleGGXVNDF(brdfData, L);
     vec3 specularBrdf = specularWeight * getPdfGGX(brdfData, materialData, L);
-    bsdfWeight = weightSpecular * specularBrdf / pdf;
+    bsdfWeight = 1.0 / (1.0 + kD) * specularBrdf / pdf;
 
     outDirection = normalize(brdfData.tbn * L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
@@ -420,7 +428,7 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
     pdf *= pdfBsdfSelect;
 
     vec3 diffuseBrdf = getDiffuseBrdf(brdfData, materialData);
-    bsdfWeight = weightDiffuse * diffuseBrdf / pdf;
+    bsdfWeight = kD / (1.0 + kD) * diffuseBrdf / pdf;
 
     outDirection = normalize(brdfData.tbn * L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
@@ -433,8 +441,14 @@ bool sampleStandardBrdf(Prd prd, Material material, vec3 viewDirection,
     float pdf = 1.0;
     pdf *= pdfBsdfSelect;
 
-    vec3 transparentBrdf = vec3(1.0);
-    bsdfWeight = weightTransparent * transparentBrdf / pdf;
+    // Absorption coefficient from Disney BSDF:
+    // http://blog.selfshadow.com/publications/s2015-shading-course/burley/s2015_pbs_disney_bsdf_notes.pdf
+    // // 5mmの厚さとする
+    // float thinDepth = 5.0 / 100.0;
+    // vec3 absorption = -log(transmissionColor) / max(thinDepth, 0.0001);
+    // vec3 transparentBtdf = exp(-absorption * thinDepth);
+    vec3 transparentBtdf = transmissionColor;
+    bsdfWeight = (1.0 - materialData.alpha) * transparentBtdf / pdf;
 
     outDirection = normalize(brdfData.tbn * L);
     if (dot(outDirection, materialData.geometryNormal) > 0.0) {
