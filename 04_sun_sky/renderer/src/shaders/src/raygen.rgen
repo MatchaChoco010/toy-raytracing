@@ -31,7 +31,7 @@ vec2 getCameraDelta() {
 
 // カメラのレイの原点と方向を計算する
 void setCameraRay(out vec3 origin, out vec3 direction) {
-  const float fov = 30.0 * PI / 180.0;
+  ;
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
   vec2 delta = getCameraDelta();
   vec2 inUV = (pixelCenter + delta) / vec2(gl_LaunchSizeEXT.xy);
@@ -39,7 +39,8 @@ void setCameraRay(out vec3 origin, out vec3 direction) {
   d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 
   origin = pushConstants.cameraTranslate;
-  direction = normalize(vec3(d.x, d.y, -1.0 / atan(fov / 2.0)));
+  direction =
+      normalize(vec3(d.x, d.y, -1.0 / atan(pushConstants.cameraFov / 2.0)));
   direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
 }
 

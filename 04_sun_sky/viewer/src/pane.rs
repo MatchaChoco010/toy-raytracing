@@ -82,18 +82,26 @@ impl Pane {
                             });
                             ui.end_row();
 
+                            ui.label("field of view: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.fov));
+                            state.fov = state.fov.clamp(1.0, 179.0);
+                            ui.end_row();
+
                             ui.label("L_white: ");
                             ui.add(egui::widgets::DragValue::new(&mut state.l_white));
+                            state.l_white = state.l_white.max(0.01);
                             ui.end_row();
 
                             ui.label("exposure: ");
                             ui.add(egui::widgets::DragValue::new(&mut state.exposure));
+                            state.exposure = state.exposure.max(0.0001);
                             ui.end_row();
 
                             ui.label("max recursion depth: ");
                             ui.add(egui::widgets::DragValue::new(
                                 &mut state.max_recursion_depth,
                             ));
+                            state.max_recursion_depth = state.max_recursion_depth.clamp(1, 64);
                             ui.end_row();
 
                             ui.label("sun direction: ");
@@ -109,6 +117,7 @@ impl Pane {
 
                             ui.label("sun strength: ");
                             ui.add(egui::widgets::DragValue::new(&mut state.sun_strength));
+                            state.sun_strength = state.sun_strength.max(0.0);
                             ui.end_row();
 
                             ui.label("sun color: ");

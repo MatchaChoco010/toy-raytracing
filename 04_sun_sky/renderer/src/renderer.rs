@@ -8,15 +8,18 @@ use crate::NextImage;
 struct PushConstants {
     camera_rotate: glam::Mat4,
     camera_translate: glam::Vec3,
+    camera_fov: f32,
     sample_index: u32,
     max_recursion_depth: u32,
     storage_image_index: u32,
     instance_params_index: u32,
     materials_index: u32,
+    sun_strength: f32,
+    padding_0: [u32; 2],
+    sun_color: glam::Vec3,
+    padding_1: [u32; 1],
     sun_direction: glam::Vec2,
     sun_angle: f32,
-    sun_strength: f32,
-    sun_color: glam::Vec3,
     sun_enabled: u32,
 }
 
@@ -525,6 +528,7 @@ impl Renderer {
                     self.params.position_y,
                     self.params.position_z,
                 ),
+                camera_fov: self.params.fov.to_radians(),
                 sample_index: self.sample_count as u32,
                 max_recursion_depth: self.params.max_recursion_depth,
                 storage_image_index: self.accumulate_storage_image_index,
@@ -538,6 +542,8 @@ impl Renderer {
                 sun_strength: self.params.sun_strength,
                 sun_color: self.params.sun_color,
                 sun_enabled: self.params.sun_enabled,
+                padding_0: [0; 2],
+                padding_1: [0; 1],
             }],
         );
 
