@@ -86,6 +86,10 @@ impl Pane {
                             ui.add(egui::widgets::DragValue::new(&mut state.l_white));
                             ui.end_row();
 
+                            ui.label("exposure: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.exposure));
+                            ui.end_row();
+
                             ui.label("max recursion depth: ");
                             ui.add(egui::widgets::DragValue::new(
                                 &mut state.max_recursion_depth,

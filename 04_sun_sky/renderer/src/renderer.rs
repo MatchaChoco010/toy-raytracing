@@ -20,23 +20,18 @@ struct PushConstants {
     sun_enabled: u32,
 }
 
-pub struct Renderer {
-    width: u32,
-    height: u32,
-    max_sample_count: u32,
-    rotate_x: f32,
-    rotate_y: f32,
-    rotate_z: f32,
-    position_x: f32,
-    position_y: f32,
-    position_z: f32,
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct FinalPushConstants {
+    sample_count: u32,
+    input_index: u32,
+    output_index: u32,
     l_white: f32,
-    max_recursion_depth: u32,
-    sun_direction: glam::Vec2,
-    sun_strength: f32,
-    sun_color: glam::Vec3,
-    sun_angle: f32,
-    sun_enabled: u32,
+    exposure: f32,
+}
+
+pub struct Renderer {
+    params: crate::Parameters,
 
     instance: ashtray::InstanceHandle,
     physical_device: vk::PhysicalDevice,
@@ -162,7 +157,7 @@ impl Renderer {
                 .push_constant_ranges(&[vk::PushConstantRange {
                     stage_flags: vk::ShaderStageFlags::COMPUTE,
                     offset: 0,
-                    size: std::mem::size_of::<u32>() as u32 * 4,
+                    size: std::mem::size_of::<FinalPushConstants>() as u32,
                 }]),
         );
         let final_compute_shader_module = ashtray::utils::create_shader_module(
@@ -186,22 +181,7 @@ impl Renderer {
         ];
 
         Self {
-            width,
-            height,
-            max_sample_count: 256,
-            rotate_x: 0.0,
-            rotate_y: 0.0,
-            rotate_z: 0.0,
-            position_x: 0.0,
-            position_y: 0.0,
-            position_z: 0.0,
-            l_white: 1.0,
-            max_recursion_depth: 1,
-            sun_direction: glam::Vec2::new(0.0, 0.0),
-            sun_strength: 0.0,
-            sun_color: glam::Vec3::new(0.0, 0.0, 0.0),
-            sun_angle: 0.0,
-            sun_enabled: 0,
+            params: crate::Parameters::default(),
 
             instance,
             physical_device,
@@ -354,25 +334,10 @@ impl Renderer {
     }
 
     fn set_parameters(&mut self, parameters: crate::Parameters) {
-        if self.width != parameters.width || self.height != parameters.height {
+        if self.params.width != parameters.width || self.params.height != parameters.height {
             // width/heightが変わっていたらstorage imageをリサイズして作り直す。
-            self.width = parameters.width;
-            self.height = parameters.height;
-            self.max_sample_count = parameters.max_sample_count;
+            self.params = parameters;
             self.sample_count = 0;
-            self.rotate_x = parameters.rotate_x;
-            self.rotate_y = parameters.rotate_y;
-            self.rotate_z = parameters.rotate_z;
-            self.position_x = parameters.position_x;
-            self.position_y = parameters.position_y;
-            self.position_z = parameters.position_z;
-            self.l_white = parameters.l_white;
-            self.max_recursion_depth = parameters.max_recursion_depth;
-            self.sun_direction = parameters.sun_direction;
-            self.sun_strength = parameters.sun_strength;
-            self.sun_color = parameters.sun_color;
-            self.sun_angle = parameters.sun_angle;
-            self.sun_enabled = parameters.sun_enabled;
 
             self.device.wait_idle();
 
@@ -381,8 +346,8 @@ impl Renderer {
                 &self.queue_handles,
                 &self.allocator,
                 &self.transfer_command_buffer,
-                self.width,
-                self.height,
+                self.params.width,
+                self.params.height,
             );
 
             let command_buffer = self.render_command_buffer.clone();
@@ -423,8 +388,8 @@ impl Renderer {
                     &self.queue_handles,
                     &self.allocator,
                     &self.transfer_command_buffer,
-                    self.width,
-                    self.height,
+                    self.params.width,
+                    self.params.height,
                     vk::Format::R8G8B8A8_UNORM,
                     vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
                 ),
@@ -433,8 +398,8 @@ impl Renderer {
                     &self.queue_handles,
                     &self.allocator,
                     &self.transfer_command_buffer,
-                    self.width,
-                    self.height,
+                    self.params.width,
+                    self.params.height,
                     vk::Format::R8G8B8A8_UNORM,
                     vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
                 ),
@@ -449,37 +414,10 @@ impl Renderer {
             self.descriptor_sets
                 .storage_image
                 .update(&self.images[1], self.final_storage_image_indices[1]);
-        } else if self.max_sample_count != parameters.max_sample_count
-            || self.rotate_x != parameters.rotate_x
-            || self.rotate_y != parameters.rotate_y
-            || self.rotate_z != parameters.rotate_z
-            || self.position_x != parameters.position_x
-            || self.position_y != parameters.position_y
-            || self.position_z != parameters.position_z
-            || self.l_white != parameters.l_white
-            || self.max_recursion_depth != parameters.max_recursion_depth
-            || self.sun_direction != parameters.sun_direction
-            || self.sun_strength != parameters.sun_strength
-            || self.sun_color != parameters.sun_color
-            || self.sun_angle != parameters.sun_angle
-            || self.sun_enabled != parameters.sun_enabled
-        {
+        } else if self.params != parameters {
             // そうでなくてdirtyなら蓄積をリセットするコマンドを発行する。
-            self.max_sample_count = parameters.max_sample_count;
+            self.params = parameters;
             self.sample_count = 0;
-            self.rotate_x = parameters.rotate_x;
-            self.rotate_y = parameters.rotate_y;
-            self.rotate_z = parameters.rotate_z;
-            self.position_x = parameters.position_x;
-            self.position_y = parameters.position_y;
-            self.position_z = parameters.position_z;
-            self.l_white = parameters.l_white;
-            self.max_recursion_depth = parameters.max_recursion_depth;
-            self.sun_direction = parameters.sun_direction;
-            self.sun_strength = parameters.sun_strength;
-            self.sun_color = parameters.sun_color;
-            self.sun_angle = parameters.sun_angle;
-            self.sun_enabled = parameters.sun_enabled;
 
             let command_buffer = self.render_command_buffer.clone();
             command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
@@ -516,7 +454,7 @@ impl Renderer {
     }
 
     fn ray_trace(&mut self) {
-        if self.sample_count >= self.max_sample_count {
+        if self.sample_count >= self.params.max_sample_count {
             return;
         }
 
@@ -578,28 +516,28 @@ impl Renderer {
             &[PushConstants {
                 camera_rotate: glam::Mat4::from_euler(
                     glam::EulerRot::YXZ,
-                    self.rotate_y.to_radians(),
-                    self.rotate_x.to_radians(),
-                    self.rotate_z.to_radians(),
+                    self.params.rotate_y.to_radians(),
+                    self.params.rotate_x.to_radians(),
+                    self.params.rotate_z.to_radians(),
                 ),
                 camera_translate: glam::Vec3::new(
-                    self.position_x,
-                    self.position_y,
-                    self.position_z,
+                    self.params.position_x,
+                    self.params.position_y,
+                    self.params.position_z,
                 ),
                 sample_index: self.sample_count as u32,
-                max_recursion_depth: self.max_recursion_depth,
+                max_recursion_depth: self.params.max_recursion_depth,
                 storage_image_index: self.accumulate_storage_image_index,
                 instance_params_index,
                 materials_index,
                 sun_direction: glam::vec2(
-                    self.sun_direction.x.to_radians(),
-                    self.sun_direction.y.to_radians(),
+                    self.params.sun_direction.x.to_radians(),
+                    self.params.sun_direction.y.to_radians(),
                 ),
-                sun_angle: self.sun_angle.to_radians(),
-                sun_strength: self.sun_strength,
-                sun_color: self.sun_color,
-                sun_enabled: self.sun_enabled,
+                sun_angle: self.params.sun_angle.to_radians(),
+                sun_strength: self.params.sun_strength,
+                sun_color: self.params.sun_color,
+                sun_enabled: self.params.sun_enabled,
             }],
         );
 
@@ -609,8 +547,8 @@ impl Renderer {
             &miss_shader_sbt_entry,
             &hit_shader_sbt_entry,
             &vk::StridedDeviceAddressRegionKHR::default(),
-            self.width,
-            self.height,
+            self.params.width,
+            self.params.height,
             1,
         );
 
@@ -634,11 +572,11 @@ impl Renderer {
     // finalしつつtextureに結果を焼き込む
     fn take_image(&mut self) -> crate::NextImage {
         let image_handles = &self.images[self.current_image_index];
-        // let fences = [self.final_fences[self.current_image_index].clone()];
+        let fences = [self.final_fences[self.current_image_index].clone()];
         let command_buffer = self.final_command_buffers[self.current_image_index].clone();
 
-        // self.device.wait_fences(&fences, u64::MAX);
-        // self.device.reset_fences(&fences);
+        self.device.wait_fences(&fences, u64::MAX);
+        self.device.reset_fences(&fences);
 
         command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
 
@@ -667,14 +605,15 @@ impl Renderer {
             &self.final_compute_pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            &[
-                self.sample_count,
-                self.accumulate_storage_image_index,
-                self.final_storage_image_indices[self.current_image_index],
-                self.l_white.to_bits(),
-            ],
+            &[FinalPushConstants {
+                sample_count: self.sample_count,
+                input_index: self.accumulate_storage_image_index,
+                output_index: self.final_storage_image_indices[self.current_image_index],
+                l_white: self.params.l_white,
+                exposure: self.params.exposure,
+            }],
         );
-        command_buffer.cmd_dispatch((self.width + 7) / 8, (self.height + 7) / 8, 1);
+        command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
 
         ashtray::utils::cmd_image_barriers(
             &command_buffer,
@@ -714,9 +653,6 @@ impl Renderer {
     }
 
     pub fn render(&mut self, parameters: crate::Parameters) -> NextImage {
-        let fences = [self.final_fences[self.current_image_index].clone()];
-        self.device.wait_fences(&fences, u64::MAX);
-        self.device.reset_fences(&fences);
         self.set_parameters(parameters);
         self.ray_trace();
         self.take_image()

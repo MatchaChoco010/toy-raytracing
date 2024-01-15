@@ -88,7 +88,7 @@ void main() {
       // sun
       vec3 sunStrength = getSunStrength();
       sunWeight = luminance(sunStrength);
-      float[2] u2 = float[](rnd1(), rnd1());
+      float[2] u2 = float[](u[1], u[2]);
       vec3 sunDirection = sampleSunDirection(u2);
       shadowPrd.shadow = 0;
       shadowPrd.attenuation = vec3(1.0);
@@ -114,7 +114,7 @@ void main() {
       }
     }
 
-    float[3] uu = float[3](u[1], u[2], u[3]);
+    float[3] uu = float[3](u[3], u[4], u[5]);
     vec3 viewDirection = -direction;
     vec3 dir;
     vec3 weight;

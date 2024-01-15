@@ -11,12 +11,19 @@ layout(push_constant) uniform PushConstants {
   uint inputIndex;
   uint outputIndex;
   float lWhite;
+  float exposure;
 }
 pushConstants;
 
+float luminance(vec3 color) {
+  return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+}
+
+vec3 exposure(vec3 color) { return pushConstants.exposure * color; }
+
 vec3 reinhardToneMapping(vec3 color) {
-  return color / (color + vec3(1.0)) *
-         (1 + color / (pushConstants.lWhite * pushConstants.lWhite));
+  return color / (luminance(color) + vec3(1.0)) *
+         (1 + luminance(color) / (pushConstants.lWhite * pushConstants.lWhite));
 }
 
 vec3 gammaCorrection(vec3 color) { return pow(color, vec3(1.0 / 2.2)); }
@@ -40,5 +47,5 @@ void main() {
 
   // store the result
   imageStore(outputImages[pushConstants.outputIndex], pixel_coords,
-             vec4(gammaCorrection(reinhardToneMapping(color)), 1.0));
+             vec4(gammaCorrection(reinhardToneMapping(exposure(color))), 1.0));
 }

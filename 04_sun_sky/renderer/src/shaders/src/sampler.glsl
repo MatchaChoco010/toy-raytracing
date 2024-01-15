@@ -7,9 +7,9 @@
 // strength of OA (0 < t <=DIMENSION)
 #define T 3
 // dimension (<s)
-#define DIMENSION 4
+#define DIMENSION 6
 // number of levels/strata
-#define S 5
+#define S 7
 
 uint permute(uint i, uint l, uint p) {
   if (p == 0)
