@@ -1,0 +1,15 @@
+[package]
+name = "viewer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ash.workspace = true
+ashtray = { path = "../ashtray" }
+egui = "0.25.0"
+egui-ash = { version = "0.4.0", features = ["gpu-allocator"] }
+egui_tiles = "0.6.0"
+glam.workspace = true
+gpu-allocator.workspace = true
+renderer = { path = "../renderer" }

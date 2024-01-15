@@ -1,0 +1,18 @@
+[workspace]
+members = [
+  "ashtray",
+  "renderer",
+  "viewer",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1.0.78"
+ash = "0.37.3"
+bytemuck = "1.14.0"
+glam = { version = "0.25.0", features = ["bytemuck"] }
+gpu-allocator = "0.25.0"

@@ -4,13 +4,13 @@
 			"path": "."
 		},
 		{
-			"path": "03_glb_pbr/ashtray"
+			"path": "04_sun_sky/ashtray"
 		},
 		{
-			"path": "03_glb_pbr/renderer"
+			"path": "04_sun_sky/renderer"
 		},
 		{
-			"path": "03_glb_pbr/viewer"
+			"path": "04_sun_sky/viewer"
 		}
 	],
 	"settings": {
