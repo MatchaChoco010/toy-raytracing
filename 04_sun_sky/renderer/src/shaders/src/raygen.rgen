@@ -2,13 +2,13 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_debug_printf : enable
 
-#include "bsdf.glsl"
-#include "common.glsl"
-#include "light.glsl"
-#include "payload.glsl"
-#include "push_constants.glsl"
-#include "random.glsl"
-#include "sampler.glsl"
+#include "modules/bsdf.glsl"
+#include "modules/common.glsl"
+#include "modules/light.glsl"
+#include "modules/payload.glsl"
+#include "modules/push_constants.glsl"
+#include "modules/random.glsl"
+#include "modules/sampler.glsl"
 
 layout(location = 0) rayPayloadEXT Prd prd;
 layout(location = 1) rayPayloadEXT ShadowPrd shadowPrd;

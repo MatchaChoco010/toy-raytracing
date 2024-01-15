@@ -1,10 +1,10 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
 
-#include "../bsdf.glsl"
-#include "../common.glsl"
-#include "../payload.glsl"
-#include "../push_constants.glsl"
+#include "../modules/bsdf.glsl"
+#include "../modules/common.glsl"
+#include "../modules/payload.glsl"
+#include "../modules/push_constants.glsl"
 
 layout(location = 1) rayPayloadInEXT ShadowPrd shadowPrd;
 

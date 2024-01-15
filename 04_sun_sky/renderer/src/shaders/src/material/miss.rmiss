@@ -1,8 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
 
-#include "../common.glsl"
-#include "../payload.glsl"
+#include "../modules/common.glsl"
+#include "../modules/payload.glsl"
 
 layout(location = 0) rayPayloadInEXT Prd prd;
 
