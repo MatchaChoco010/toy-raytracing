@@ -5,4 +5,5 @@
 
 layout(location = 1) rayPayloadInEXT ShadowPrd shadowPrd;
 
+// 不透明物体にhitしたらshadowフラグを立てる。
 void main() { shadowPrd.shadow = 1; }

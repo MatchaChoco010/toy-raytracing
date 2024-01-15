@@ -6,4 +6,5 @@
 
 layout(location = 0) rayPayloadInEXT Prd prd;
 
+// missフラグを立てる。
 void main() { prd.miss = 1; }

@@ -2,7 +2,6 @@
 #define _SAMPLER_GLSL_
 
 #include "common.glsl"
-#include "push_constants.glsl"
 
 // strength of OA (0 < t <=DIMENSION)
 #define T 3
@@ -81,6 +80,9 @@ float randfloat(uint i, uint p) {
   return i * (1.0f / 4294967808.0f);
 }
 
+// Orthogonal Array Sampling for Monte Carlo Rendering
+// https://cs.dartmouth.edu/~wjarosz/publications/jarosz19orthogonal.pdf
+// 層化された多次元の乱数を生成する。
 // i: sample index
 // p: pseudo-random permutation seed
 float bushOA(uint i, uint p) {
@@ -96,6 +98,7 @@ float bushOA(uint i, uint p) {
   return (stratum + (subStratum + jitter) / stm) / S;
 }
 
+// 多次元の層化された乱数をOAで求めて配列で返す。
 float[DIMENSION] sampleRandom(uint depth) {
   seed = seed * 747796405u + 2891336453u;
 

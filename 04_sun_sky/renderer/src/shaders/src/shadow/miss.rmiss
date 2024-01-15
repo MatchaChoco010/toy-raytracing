@@ -6,4 +6,5 @@
 
 layout(location = 1) rayPayloadInEXT ShadowPrd prd;
 
+// 何にもヒットしなかったとき、sunやskyの影ではないのでshadowフラグを折る。
 void main() { prd.shadow = 0; }

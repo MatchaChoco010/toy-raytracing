@@ -3,6 +3,7 @@
 
 #include "common.glsl"
 
+// hit情報を詰め込むPayload
 struct Prd {
   Material material;
   uint miss;
@@ -14,6 +15,7 @@ struct Prd {
   uint depth;
 };
 
+// shadow rayの結果を詰め込むPayload
 struct ShadowPrd {
   vec3 attenuation;
   uint shadow;

@@ -4,9 +4,8 @@
 
 #include "modules/bsdf.glsl"
 #include "modules/common.glsl"
-#include "modules/light.glsl"
+#include "modules/light/sun.glsl"
 #include "modules/payload.glsl"
-#include "modules/push_constants.glsl"
 #include "modules/random.glsl"
 #include "modules/sampler.glsl"
 
@@ -15,7 +14,7 @@ layout(location = 1) rayPayloadEXT ShadowPrd shadowPrd;
 
 // アンチエイリアスのためにpixelの位置をずらす
 vec2 getCameraDelta() {
-  vec2 delta = 2 * rnd2();
+  vec2 delta = 2 * vec2(rnd(), rnd());
   if (delta.x < 1.0) {
     delta.x = sqrt(delta.x) - 1.0;
   } else {
@@ -30,6 +29,21 @@ vec2 getCameraDelta() {
   return delta;
 }
 
+// カメラのレイの原点と方向を計算する
+void setCameraRay(out vec3 origin, out vec3 direction) {
+  const float fov = 30.0 * PI / 180.0;
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+  vec2 delta = getCameraDelta();
+  vec2 inUV = (pixelCenter + delta) / vec2(gl_LaunchSizeEXT.xy);
+  vec2 d = inUV * 2.0 - 1.0;
+  d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
+
+  origin = pushConstants.cameraTranslate;
+  direction = normalize(vec3(d.x, d.y, -1.0 / atan(fov / 2.0)));
+  direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
+}
+
+// MISの重みをパワーヒューリスティックスで計算する
 float misWeightPowerHeuristic(float pdfA, float weightA, float pdfB,
                               float weightB) {
   return pow(weightA * pdfA, 2.0) / pow(weightA * pdfA + weightB * pdfB, 2.0);
@@ -37,15 +51,11 @@ float misWeightPowerHeuristic(float pdfA, float weightA, float pdfB,
 
 void main() {
   init_random(0);
-  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-  vec2 delta = getCameraDelta();
-  vec2 inUV = (pixelCenter + delta) / vec2(gl_LaunchSizeEXT.xy);
-  vec2 d = inUV * 2.0 - 1.0;
-  d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 
-  vec3 origin = pushConstants.cameraTranslate;
-  vec3 direction = normalize(vec3(d.x, d.y, -2.0));
-  direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
+  vec3 origin;
+  vec3 direction;
+  setCameraRay(origin, direction);
+
   float tmin = 0.001;
   float tmax = 100000.0;
 
@@ -104,9 +114,10 @@ void main() {
         float sunPdf = getSunPdf(sunDirection);
         vec3 bsdfWeight;
         vec3 emissive;
-        evalBsdfWeight(prd, material, -direction, sunDirection, bsdfWeight,
-                       emissive);
-        float bsdfPdf = evalBsdfPdf(prd, material, -direction, sunDirection);
+        evalStandardBsdf(prd, material, -direction, sunDirection, bsdfWeight,
+                         emissive);
+        float bsdfPdf =
+            evalStandardPdf(prd, material, -direction, sunDirection);
         float misWeight =
             misWeightPowerHeuristic(sunPdf, sunWeight, bsdfPdf, 1.0);
         radiance += throughput * bsdfWeight * sunStrength *
@@ -119,9 +130,9 @@ void main() {
     vec3 dir;
     vec3 weight;
     vec3 emissive;
-    bool traceNext =
-        sampleBsdf(uu, prd, material, viewDirection, dir, weight, emissive);
-    float bsdfPdf = evalBsdfPdf(prd, material, viewDirection, dir);
+    bool traceNext = sampleStandardBsdf(uu, prd, material, viewDirection, dir,
+                                        weight, emissive);
+    float bsdfPdf = evalStandardPdf(prd, material, viewDirection, dir);
 
     radiance += throughput * emissive;
     if (!traceNext) {

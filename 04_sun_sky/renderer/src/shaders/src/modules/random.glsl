@@ -3,9 +3,9 @@
 
 #include "common.glsl"
 #include "payload.glsl"
-#include "push_constants.glsl"
 
-uint seed;
+// 乱数として使うPCGHash関数。
+// https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint PCGHash() {
   seed = seed * 747796405u + 2891336453u;
   uint state = seed;
@@ -13,15 +13,7 @@ uint PCGHash() {
   return (word >> 22u) ^ word;
 }
 
-float rnd1() { return PCGHash() / float(0xFFFFFFFFU); }
-
-vec2 rnd2() { return vec2(rnd1(), rnd1()); }
-
-void init_random(uint depth) {
-  seed =
-      pushConstants.sampleIndex +
-      (gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) * 0x12345678u +
-      depth * 0x87654321u;
-}
+// 0.0～1.0の範囲の乱数を返す。
+float rnd() { return PCGHash() / float(0xFFFFFFFFU); }
 
 #endif

@@ -1,8 +1,7 @@
 #ifndef _PUSH_CONSTANTS_GLSL_
 #define _PUSH_CONSTANTS_GLSL_
 
-#include "common.glsl"
-
+// レンダラーからpush constants経由で渡されるパラメータ。
 layout(push_constant) uniform PushConstants {
   mat4 cameraRotate;
   vec3 cameraTranslate;

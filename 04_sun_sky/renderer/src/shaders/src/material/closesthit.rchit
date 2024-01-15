@@ -3,12 +3,12 @@
 
 #include "../modules/common.glsl"
 #include "../modules/payload.glsl"
-#include "../modules/push_constants.glsl"
 
 layout(location = 0) rayPayloadInEXT Prd prd;
 
 hitAttributeEXT vec2 attribs;
 
+// hitした位置のMaterial情報と、hitの情報を埋めてmissフラグを折る。
 void main() {
   vec3 barycentricCoords =
       vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
