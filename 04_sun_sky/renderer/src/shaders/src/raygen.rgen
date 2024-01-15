@@ -30,8 +30,9 @@ vec2 getCameraDelta() {
   return delta;
 }
 
-float misWeightPowerHeuristic(float pdfA, float pdfB) {
-  return pow(pdfA, 2.0) / pow(pdfA + pdfB, 2.0);
+float misWeightPowerHeuristic(float pdfA, float weightA, float pdfB,
+                              float weightB) {
+  return pow(weightA * pdfA, 2.0) / pow(weightA * pdfA + weightB * pdfB, 2.0);
 }
 
 void main() {
@@ -82,8 +83,11 @@ void main() {
       throughput /= russianRouletteProbability;
     }
 
+    float sunWeight = 0.0;
     if (pushConstants.sunEnabled == 1) {
       // sun
+      vec3 sunStrength = getSunStrength();
+      sunWeight = luminance(sunStrength);
       float[2] u2 = float[](rnd1(), rnd1());
       vec3 sunDirection = sampleSunDirection(u2);
       shadowPrd.shadow = 0;
@@ -98,13 +102,13 @@ void main() {
       );
       if (shadowPrd.shadow == 0) {
         float sunPdf = getSunPdf(sunDirection);
-        vec3 sunStrength = getSunStrength();
         vec3 bsdfWeight;
         vec3 emissive;
         evalBsdfWeight(prd, material, -direction, sunDirection, bsdfWeight,
                        emissive);
         float bsdfPdf = evalBsdfPdf(prd, material, -direction, sunDirection);
-        float misWeight = misWeightPowerHeuristic(sunPdf, bsdfPdf);
+        float misWeight =
+            misWeightPowerHeuristic(sunPdf, sunWeight, bsdfPdf, 1.0);
         radiance += throughput * bsdfWeight * sunStrength *
                     shadowPrd.attenuation * misWeight;
       }
@@ -126,22 +130,24 @@ void main() {
 
     float sunPdf = 0.0;
     if (pushConstants.sunEnabled == 1) {
-      shadowPrd.shadow = 0;
-      shadowPrd.attenuation = vec3(1.0);
-      traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
-                  0xff, // mask
-                  2,    // sbtRecordOffset
-                  1,    // sbtRecordStride
-                  1,    // missIndex
-                  origin, tmin, dir, tmax,
-                  1 // payload location
-      );
-      if (shadowPrd.shadow == 0) {
-        sunPdf = getSunPdf(dir);
+      if (isSunDirection(dir)) {
+        shadowPrd.shadow = 0;
+        shadowPrd.attenuation = vec3(1.0);
+        traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
+                    0xff, // mask
+                    2,    // sbtRecordOffset
+                    1,    // sbtRecordStride
+                    1,    // missIndex
+                    origin, tmin, dir, tmax,
+                    1 // payload location
+        );
+        if (shadowPrd.shadow == 0) {
+          sunPdf = getSunPdf(dir);
+        }
       }
     }
 
-    float misWeight = misWeightPowerHeuristic(bsdfPdf, sunPdf);
+    float misWeight = misWeightPowerHeuristic(bsdfPdf, 1.0, sunPdf, sunWeight);
 
     direction = dir;
     throughput *= weight;

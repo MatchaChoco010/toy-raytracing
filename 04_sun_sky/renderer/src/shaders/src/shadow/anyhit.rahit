@@ -59,16 +59,12 @@ void main() {
   vec3 rayDirection = gl_ObjectRayDirectionEXT;
 
   vec3 viewDirection = -rayDirection;
-  vec3 outDirection = rayDirection;
-  vec3 bsdfWeight;
-  vec3 emissive;
-  evalBsdfWeight(prd, material, viewDirection, outDirection, bsdfWeight,
-                 emissive);
-  if (luminance(bsdfWeight) < 0.025) {
+  vec3 btdfWeight = evalBtdfTransparent(prd, material, viewDirection);
+  shadowPrd.attenuation *= btdfWeight;
+  if (luminance(shadowPrd.attenuation) < 0.0001) {
     shadowPrd.shadow = 1;
   } else {
     shadowPrd.shadow = 0;
-    shadowPrd.attenuation *= bsdfWeight;
     ignoreIntersectionEXT;
   }
 }

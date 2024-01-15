@@ -297,6 +297,21 @@ float getPdfDistribute1D(float[3] func, uint index) {
   return pdf;
 }
 
+// 透過したときのときのBTDFの重みを計算する。
+vec3 evalBtdfTransparent(Prd prd, Material material, vec3 viewDirection) {
+  MaterialData materialData = getMaterialData(prd, material, viewDirection);
+
+  // transmissionColorはユーザーが与えるべき値だけど、
+  // 今回はbaseColorとalphaから適当に決める。
+  // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
+  // 適当に透過色として決めた。
+  vec3 transmissionColor =
+      exp(log(clamp(materialData.baseColor, 0.0001, 1.0)) * materialData.alpha);
+
+  vec3 transparentBtdf = transmissionColor;
+  return (1.0 - materialData.alpha) * transparentBtdf;
+}
+
 // viewDirectionとoutDirectionを与えたときのBSDFの重みを計算する
 void evalBsdfWeight(Prd prd, Material material, vec3 viewDirection,
                     vec3 outDirection, out vec3 bsdfWeight, out vec3 emissive) {
