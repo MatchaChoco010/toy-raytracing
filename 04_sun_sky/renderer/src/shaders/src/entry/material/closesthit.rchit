@@ -1,16 +1,14 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
 
-#include "../modules/bsdf.glsl"
-#include "../modules/common.glsl"
-#include "../modules/payload.glsl"
+#include "../../modules/common.glsl"
+#include "../../modules/payload.glsl"
 
-layout(location = 1) rayPayloadInEXT ShadowPrd shadowPrd;
+layout(location = 0) rayPayloadInEXT Prd prd;
 
 hitAttributeEXT vec2 attribs;
 
-// shadow rayで半透明にhitした場合に光を減衰させつつ光を通す。
-// hitした位置のマテリアルを元に透過成分のbsdfを計算して、透過光の減衰を計算している。
+// hitした位置のMaterial情報と、hitの情報を埋めてmissフラグを折る。
 void main() {
   vec3 barycentricCoords =
       vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
@@ -48,7 +46,6 @@ void main() {
   vec3 geometryNormal =
       normalize(cross(v1.position - v0.position, v2.position - v0.position));
 
-  Prd prd;
   prd.hitPosition = hitPosition;
   prd.hitGeometryNormal = geometryNormal;
   prd.hitShadingNormal = normal;
@@ -56,16 +53,4 @@ void main() {
   prd.hitTangent = normalize(tangent);
   prd.material = material;
   prd.miss = 0;
-
-  vec3 rayDirection = gl_ObjectRayDirectionEXT;
-
-  vec3 viewDirection = -rayDirection;
-  vec3 btdfWeight = evalStandardBsdfTransparent(prd, material, viewDirection);
-  shadowPrd.attenuation *= btdfWeight;
-  if (luminance(shadowPrd.attenuation) < 0.0001) {
-    shadowPrd.shadow = 1;
-  } else {
-    shadowPrd.shadow = 0;
-    ignoreIntersectionEXT;
-  }
 }

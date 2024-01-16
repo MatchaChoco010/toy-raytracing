@@ -1,7 +1,7 @@
 #ifndef _DISTRIBUTE_1D_GLSL_
 #define _DISTRIBUTE_1D_GLSL_
 
-#define DISTRIBUTE_1D_COUNT 3
+const uint DISTRIBUTE_1D_COUNT = 3;
 
 // piecewise functionの分布に従ってindexをサンプリングする
 float samplePdfDistribute1D(float u, float[DISTRIBUTE_1D_COUNT] func,

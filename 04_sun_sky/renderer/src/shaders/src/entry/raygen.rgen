@@ -2,12 +2,12 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_debug_printf : enable
 
-#include "modules/bsdf.glsl"
-#include "modules/common.glsl"
-#include "modules/light/sun.glsl"
-#include "modules/payload.glsl"
-#include "modules/random.glsl"
-#include "modules/sampler.glsl"
+#include "../modules/bxdf/standard.glsl"
+#include "../modules/common.glsl"
+#include "../modules/light/sun.glsl"
+#include "../modules/payload.glsl"
+#include "../modules/random.glsl"
+#include "../modules/sampler.glsl"
 
 layout(location = 0) rayPayloadEXT Prd prd;
 layout(location = 1) rayPayloadEXT ShadowPrd shadowPrd;
@@ -83,7 +83,7 @@ void main() {
     origin = prd.hitPosition;
     Material material = prd.material;
 
-    float[DIMENSION] u = sampleRandom(prd.depth);
+    float[6] u = SAMPLE_RANDOM(3, 6, 7)(prd.depth);
 
     float russianRouletteProbability = clamp(luminance(throughput), 0.0, 1.0);
     if (prd.depth > 0) {
@@ -123,7 +123,8 @@ void main() {
         float misWeight = misWeightPowerHeuristic(sunPdf, 1.0, bsdfPdf, 1.0);
         MaterialData materialData =
             getMaterialData(prd, material, viewDirection);
-        float cosTheta = dot(sunDirection, materialData.shadingNormal);
+        float cosTheta =
+            max(dot(sunDirection, materialData.shadingNormal), 0.0);
         radiance += throughput * bsdfWeight * cosTheta * sunStrength *
                     shadowPrd.attenuation * misWeight / sunPdf;
       }
@@ -132,11 +133,11 @@ void main() {
     float[3] uu = float[3](u[3], u[4], u[5]);
     vec3 viewDirection = -direction;
     vec3 dir;
-    vec3 weight;
+    vec3 bsdf;
+    float bsdfPdf;
     vec3 emissive;
     bool traceNext = sampleStandardBsdf(uu, prd, material, viewDirection, dir,
-                                        weight, emissive);
-    float bsdfPdf = evalStandardPdf(prd, material, viewDirection, dir);
+                                        bsdf, bsdfPdf, emissive);
 
     radiance += throughput * emissive;
     if (!traceNext) {
@@ -165,7 +166,7 @@ void main() {
     float misWeight = misWeightPowerHeuristic(bsdfPdf, 1.0, sunPdf, 1.0);
 
     direction = dir;
-    throughput *= misWeight * weight;
+    throughput *= misWeight * bsdf / bsdfPdf;
   }
 
   vec3 rgb = radiance;

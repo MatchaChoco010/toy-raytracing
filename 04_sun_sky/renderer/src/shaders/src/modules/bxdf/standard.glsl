@@ -1,11 +1,11 @@
-#ifndef _BSDF_GLSL_
-#define _BSDF_GLSL_
+#ifndef _BXDF_STANDARD_GLSL_
+#define _BXDF_STANDARD_GLSL_
 
-#include "bxdf/ggx.glsl"
-#include "bxdf/lambert.glsl"
-#include "bxdf/transparent.glsl"
-#include "common.glsl"
-#include "distribute_1d.glsl"
+#include "../common.glsl"
+#include "../distribute_1d.glsl"
+#include "ggx.glsl"
+#include "lambert.glsl"
+#include "transparent.glsl"
 
 // viewDirectionとoutDirectionを与えたときのBSDFの減衰と発光を計算する
 void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
@@ -97,7 +97,7 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
 // 法線とサンプリング方向が逆の場合や、BSDFの重みが0 or NaNの場合はfalseを返す。
 bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
                         vec3 viewDirection, out vec3 outDirection,
-                        out vec3 bsdfWeight, out vec3 emissive) {
+                        out vec3 bsdf, out float pdf, out vec3 emissive) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
@@ -121,11 +121,11 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     // specular
     vec2 uu = vec2(u[1], u[2]);
     brdfData.L = sampleGGXDirection(uu, brdfData);
-    float pdf = evalGGXPdf(brdfData, materialData);
+    pdf = evalGGXPdf(brdfData, materialData);
     pdf *= pdfBsdfSelect;
 
     vec3 specularBrdf = evalGGXBrdf(brdfData, materialData);
-    bsdfWeight = weightSpecular * specularBrdf / pdf;
+    bsdf = weightSpecular * specularBrdf;
 
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
@@ -136,11 +136,11 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     // diffuse
     vec2 uu = vec2(u[1], u[2]);
     brdfData.L = sampleLambertDirection(uu, brdfData);
-    float pdf = evalLambertPdf(brdfData, materialData);
+    pdf = evalLambertPdf(brdfData, materialData);
     pdf *= pdfBsdfSelect;
 
     vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData);
-    bsdfWeight = weightDiffuse * diffuseBrdf / pdf;
+    bsdf = weightDiffuse * diffuseBrdf;
 
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
@@ -151,11 +151,11 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     // transparent
     vec2 uu = vec2(u[1], u[2]);
     brdfData.L = sampleTransparentDirection(uu, brdfData);
-    float pdf = evalTransparentPdf(brdfData, materialData);
+    pdf = evalTransparentPdf(brdfData, materialData);
     pdf *= pdfBsdfSelect;
 
     vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
-    bsdfWeight = weightTransparent * transparentBtdf / pdf;
+    bsdf = weightTransparent * transparentBtdf;
 
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) > 0.0) {
@@ -164,7 +164,7 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     break;
   }
 
-  if (luminance(bsdfWeight) == 0.0 || isnan(luminance(bsdfWeight))) {
+  if (luminance(bsdf) == 0.0 || isnan(luminance(bsdf))) {
     return false;
   }
 
