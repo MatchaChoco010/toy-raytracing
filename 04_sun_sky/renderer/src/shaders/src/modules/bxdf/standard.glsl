@@ -97,7 +97,8 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
 // 法線とサンプリング方向が逆の場合や、BSDFの重みが0 or NaNの場合はfalseを返す。
 bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
                         vec3 viewDirection, out vec3 outDirection,
-                        out vec3 bsdf, out float pdf, out vec3 emissive) {
+                        out float cosTheta, out vec3 bsdf, out float pdf,
+                        out vec3 emissive) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
@@ -127,6 +128,8 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     vec3 specularBrdf = evalGGXBrdf(brdfData, materialData);
     bsdf = weightSpecular * specularBrdf;
 
+    cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
+
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
       return false;
@@ -142,6 +145,8 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData);
     bsdf = weightDiffuse * diffuseBrdf;
 
+    cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
+
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
       return false;
@@ -156,6 +161,8 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
 
     vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
     bsdf = weightTransparent * transparentBtdf;
+
+    cosTheta = 1.0;
 
     outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) > 0.0) {

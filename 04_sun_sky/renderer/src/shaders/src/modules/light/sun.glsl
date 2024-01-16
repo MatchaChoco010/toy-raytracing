@@ -13,7 +13,8 @@ vec3 sunDirection() {
 // 与えられたdirectionが太陽の立体角に含まれるかを判定する。
 // 引数のdirectionはworld space。
 bool isSunDirection(vec3 direction) {
-  return dot(direction, sunDirection()) > cos(1 - pushConstants.sunAngle / 2);
+  return dot(direction, sunDirection()) >=
+         cos(pushConstants.sunAngle / 2 + 0.0001);
 }
 
 // 頂角がsunAngleの円錐の立体角の中から一様にランダムに方向をサンプリングして方向を返す。

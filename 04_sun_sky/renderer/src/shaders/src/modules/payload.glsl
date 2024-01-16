@@ -17,7 +17,7 @@ struct Prd {
 
 // shadow rayの結果を詰め込むPayload
 struct ShadowPrd {
-  vec3 attenuation;
+  vec3 transparent;
   uint shadow;
 };
 
