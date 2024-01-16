@@ -11,7 +11,9 @@ layout(push_constant) uniform PushConstants {
   uint inputIndex;
   uint outputIndex;
   float lWhite;
-  float exposure;
+  float aperture;
+  float shutterSpeed;
+  float ISO;
 }
 pushConstants;
 
@@ -21,7 +23,12 @@ float luminance(vec3 color) {
 }
 
 // 露出補正関数
-vec3 exposure(vec3 color) { return pushConstants.exposure * color; }
+vec3 exposure(vec3 color) {
+  // L_avg = 1000 / 65 * aperture^2 / (shutterSpeed * ISO)
+  float lAvg = 1000.0 / 65.0 * pushConstants.aperture * pushConstants.aperture /
+               (pushConstants.shutterSpeed * pushConstants.ISO);
+  return 0.18 / lAvg * color;
+}
 
 // Reinhardトーンマッピング関数
 vec3 reinhardToneMapping(vec3 color) {

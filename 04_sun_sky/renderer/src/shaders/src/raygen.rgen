@@ -115,14 +115,17 @@ void main() {
         float sunPdf = getSunPdf(sunDirection);
         vec3 bsdfWeight;
         vec3 emissive;
-        evalStandardBsdf(prd, material, -direction, sunDirection, bsdfWeight,
+        vec3 viewDirection = -direction;
+        evalStandardBsdf(prd, material, viewDirection, sunDirection, bsdfWeight,
                          emissive);
         float bsdfPdf =
-            evalStandardPdf(prd, material, -direction, sunDirection);
-        float misWeight =
-            misWeightPowerHeuristic(sunPdf, sunWeight, bsdfPdf, 1.0);
-        radiance += throughput * bsdfWeight * sunStrength *
-                    shadowPrd.attenuation * misWeight;
+            evalStandardPdf(prd, material, viewDirection, sunDirection);
+        float misWeight = misWeightPowerHeuristic(sunPdf, 1.0, bsdfPdf, 1.0);
+        MaterialData materialData =
+            getMaterialData(prd, material, viewDirection);
+        float cosTheta = dot(sunDirection, materialData.shadingNormal);
+        radiance += throughput * bsdfWeight * cosTheta * sunStrength *
+                    shadowPrd.attenuation * misWeight / sunPdf;
       }
     }
 
@@ -159,10 +162,10 @@ void main() {
       }
     }
 
-    float misWeight = misWeightPowerHeuristic(bsdfPdf, 1.0, sunPdf, sunWeight);
+    float misWeight = misWeightPowerHeuristic(bsdfPdf, 1.0, sunPdf, 1.0);
 
     direction = dir;
-    throughput *= weight;
+    throughput *= misWeight * weight;
   }
 
   vec3 rgb = radiance;

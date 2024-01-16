@@ -30,7 +30,9 @@ struct FinalPushConstants {
     input_index: u32,
     output_index: u32,
     l_white: f32,
-    exposure: f32,
+    aperture: f32,
+    shutter_speed: f32,
+    iso: f32,
 }
 
 pub struct Renderer {
@@ -616,7 +618,9 @@ impl Renderer {
                 input_index: self.accumulate_storage_image_index,
                 output_index: self.final_storage_image_indices[self.current_image_index],
                 l_white: self.params.l_white,
-                exposure: self.params.exposure,
+                aperture: self.params.aperture,
+                shutter_speed: self.params.shutter_speed,
+                iso: self.params.iso,
             }],
         );
         command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);

@@ -92,9 +92,19 @@ impl Pane {
                             state.l_white = state.l_white.max(0.01);
                             ui.end_row();
 
-                            ui.label("exposure: ");
-                            ui.add(egui::widgets::DragValue::new(&mut state.exposure));
-                            state.exposure = state.exposure.max(0.0001);
+                            ui.label("aperture (f-number): ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.aperture));
+                            state.aperture = state.aperture.clamp(1.4, 64.0);
+                            ui.end_row();
+
+                            ui.label("shutter speed: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.shutter_speed));
+                            state.shutter_speed = state.shutter_speed.max(0.0001);
+                            ui.end_row();
+
+                            ui.label("ISO: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.iso));
+                            state.iso = state.iso.max(100.0);
                             ui.end_row();
 
                             ui.label("max recursion depth: ");

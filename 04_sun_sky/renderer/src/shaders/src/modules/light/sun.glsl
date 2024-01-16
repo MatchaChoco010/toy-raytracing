@@ -46,9 +46,21 @@ float getSunPdf(vec3 direction) {
   return 1.0 / (2 * PI * (1 - cos(pushConstants.sunAngle / 2)));
 }
 
-// 太陽の強さを太陽の色と強さをかけあわせて計算する。
+// 太陽の垂直放射照度(W/m^2)と色から、太陽の放射輝度(W/m^2/sr)を計算する。
+// 放射輝度にcos(delta)をかけて天球で積分をすると放射照度になる。
+// ここでdeltaは天球上の方向に垂直な平面とy-upな平面のなす角。
+// したがって、delta = PI/2 - thetaとして
+// 太陽の方向と放射輝度の方向のなす角thetaに変換すると
+// sin(theta)かけて放射輝度を積分する形になる。
+// 太陽の立体角の中で放射輝度が一定であるとすると、放射輝度以外の部分の係数は
+// sin(theta)を0<=theta<sunAngle/2, 0<=phi<2*PIで積分したとなる。
+// これは4 * PI * (sin(sunAngle/4))^2となるので、
+// 垂直放射照度から放射輝度を求めるには
+// 垂直放射照度を 4 * PI * (sin(sunAngle/4))^2で割れば良い。
 vec3 getSunStrength() {
-  return pushConstants.sunStrength * pushConstants.sunColor;
+  return pushConstants.sunStrength * pushConstants.sunColor /
+         (4 * PI * sin(pushConstants.sunAngle / 4) *
+          sin(pushConstants.sunAngle / 4));
 }
 
 #endif
