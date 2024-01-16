@@ -24,6 +24,9 @@ pub struct SceneViewState {
     pub sun_strength: f32,
     pub sun_color: glam::Vec3,
     pub sun_enabled: u32,
+    pub sky_rotation: f32,
+    pub sky_strength: f32,
+    pub sky_enabled: u32,
 }
 
 struct SceneViewInner {
@@ -77,6 +80,9 @@ impl SceneView {
                     sun_strength: 110000.0,
                     sun_color: glam::Vec3::ONE,
                     sun_enabled: 1,
+                    sky_rotation: 0.0,
+                    sky_strength: 60000.0,
+                    sky_enabled: 1,
                 })),
             })),
         }
@@ -107,6 +113,9 @@ impl SceneView {
             sun_color: state.sun_color,
             sun_angle: state.sun_angle,
             sun_enabled: state.sun_enabled,
+            sky_rotation: state.sky_rotation,
+            sky_strength: state.sky_strength,
+            sky_enabled: state.sky_enabled,
         });
         let texture_id = unsafe {
             inner.image_registry.register_user_texture(

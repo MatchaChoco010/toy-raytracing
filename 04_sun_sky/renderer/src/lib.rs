@@ -31,6 +31,9 @@ pub struct Parameters {
     pub sun_color: glam::Vec3,
     pub sun_angle: f32,
     pub sun_enabled: u32,
+    pub sky_rotation: f32,
+    pub sky_strength: f32,
+    pub sky_enabled: u32,
 }
 impl Default for Parameters {
     fn default() -> Self {
@@ -55,6 +58,9 @@ impl Default for Parameters {
             sun_color: glam::Vec3::new(0.0, 0.0, 0.0),
             sun_angle: 0.0,
             sun_enabled: 0,
+            sky_rotation: 0.0,
+            sky_strength: 0.0,
+            sky_enabled: 0,
         }
     }
 }

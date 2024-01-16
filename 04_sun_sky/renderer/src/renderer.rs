@@ -21,6 +21,14 @@ struct PushConstants {
     sun_direction: glam::Vec2,
     sun_angle: f32,
     sun_enabled: u32,
+    sky_width: u32,
+    sky_height: u32,
+    sky_rotation: f32,
+    sky_strength: f32,
+    sky_enabled: u32,
+    padding_2: [u32; 3],
+    sky_buffer_address: u64,
+    sky_cdf_buffer_address: u64,
 }
 
 #[repr(C)]
@@ -473,6 +481,7 @@ impl Renderer {
         let descriptor_sets = self.acceleration_structure_descriptor_set.as_ref().unwrap();
         let instance_params_index = self.instance_params_buffer_index.unwrap();
         let materials_index = self.materials_buffer_index.unwrap();
+        let scene = self.scene_objects.as_ref().unwrap();
 
         // command bufferの開始
         let command_buffer = self.render_command_buffer.clone();
@@ -544,8 +553,16 @@ impl Renderer {
                 sun_strength: self.params.sun_strength,
                 sun_color: self.params.sun_color,
                 sun_enabled: self.params.sun_enabled,
+                sky_width: scene.sky_texture_width,
+                sky_height: scene.sky_texture_height,
+                sky_rotation: self.params.sky_rotation.to_radians(),
+                sky_strength: self.params.sky_strength,
+                sky_enabled: self.params.sky_enabled,
+                sky_buffer_address: scene.sky_texture_buffer.device_address,
+                sky_cdf_buffer_address: scene.sky_texture_cdf_buffer.device_address,
                 padding_0: [0; 2],
                 padding_1: [0; 1],
+                padding_2: [0; 3],
             }],
         );
 

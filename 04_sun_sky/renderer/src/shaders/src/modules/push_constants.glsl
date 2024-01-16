@@ -18,6 +18,14 @@ layout(push_constant) uniform PushConstants {
   vec2 sunDirection;
   float sunAngle;
   uint sunEnabled;
+  uint skyWidth;
+  uint skyHeight;
+  float skyRotation;
+  float skyStrength;
+  uint skyEnabled;
+  uint[3] padding2;
+  uint64_t skyBufferAddress;
+  uint64_t skyCdfBufferAddress;
 }
 pushConstants;
 

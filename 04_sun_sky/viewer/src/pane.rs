@@ -143,6 +143,21 @@ impl Pane {
                             ui.add(egui::widgets::Checkbox::without_text(&mut sun_enabled));
                             state.sun_enabled = sun_enabled as u32;
                             ui.end_row();
+
+                            ui.label("sky rotation: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.sky_rotation));
+                            ui.end_row();
+
+                            ui.label("sky strength: ");
+                            ui.add(egui::widgets::DragValue::new(&mut state.sky_strength));
+                            state.sun_strength = state.sun_strength.max(0.0);
+                            ui.end_row();
+
+                            ui.label("sky enabled: ");
+                            let mut sky_enabled = state.sky_enabled != 0;
+                            ui.add(egui::widgets::Checkbox::without_text(&mut sky_enabled));
+                            state.sky_enabled = sky_enabled as u32;
+                            ui.end_row();
                         });
                     ui.add_space(12.0);
                 });

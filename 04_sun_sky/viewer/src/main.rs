@@ -81,6 +81,7 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
 
         // load scene
         let scene = renderer::Scene {
+            sky_texture_path: "assets/sky/scythian_tombs_2_1k.exr".into(),
             glbs: vec![
                 renderer::Glb {
                     path: "assets/glb/dragon-1.glb".into(),

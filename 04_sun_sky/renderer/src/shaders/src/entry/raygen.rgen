@@ -4,6 +4,7 @@
 
 #include "../modules/bxdf/standard.glsl"
 #include "../modules/common.glsl"
+#include "../modules/light/sky.glsl"
 #include "../modules/light/sun.glsl"
 #include "../modules/payload.glsl"
 #include "../modules/random.glsl"
@@ -45,7 +46,7 @@ void setCameraRay(out vec3 origin, out vec3 direction) {
 }
 
 // MISの重みをパワーヒューリスティックスで計算する
-float misWeightPowerHeuristic(float mainPdf, float[2] otherPdfs) {
+float misWeightPowerHeuristic(float mainPdf, float[3] otherPdfs) {
   float otherPdfSum = 0.0;
   for (int i = 0; i < otherPdfs.length(); i++) {
     otherPdfSum += otherPdfs[i];
@@ -85,6 +86,7 @@ void main() {
       if (isSunDirection(direction)) {
         radiance += getSunStrength();
       }
+      radiance += getSkyColor(direction);
     }
 
     if (prd.miss == 1 || prd.depth > pushConstants.maxRecursionDepth) {
@@ -124,8 +126,9 @@ void main() {
                   origin, tmin, sunDirection, tmax,
                   1 // payload location
       );
-      if (shadowPrd.shadow == 0) {
+      if (shadowPrd.shadow == 0 && isSunDirection(sunDirection)) {
         float sunPdf = getSunPdf(sunDirection);
+        float skyPdf = getSkyPdf(sunDirection, materialData.shadingNormal);
         vec3 bsdfWeight;
         vec3 emissive;
         evalStandardBsdf(prd, material, viewDirection, sunDirection, bsdfWeight,
@@ -133,11 +136,45 @@ void main() {
         float bsdfPdf =
             evalStandardPdf(prd, material, viewDirection, sunDirection);
         float misWeight =
-            misWeightPowerHeuristic(sunPdf, float[](sunPdf, bsdfPdf));
+            misWeightPowerHeuristic(sunPdf, float[](sunPdf, skyPdf, bsdfPdf));
         float cosTheta =
             max(dot(sunDirection, materialData.shadingNormal), 0.0);
         radiance += sunStrength * throughput * shadowPrd.transparent *
                     bsdfWeight * cosTheta * misWeight / sunPdf;
+      }
+    }
+
+    if (pushConstants.skyEnabled == 1) {
+      // sky
+      float[2] u2 = float[](u[1], u[2]);
+      vec3 skyDirection = sampleSkyDirection(u2, materialData.shadingNormal);
+      shadowPrd.shadow = 0;
+      shadowPrd.transparent = vec3(1.0);
+      traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
+                  0xff, // mask
+                  2,    // sbtRecordOffset
+                  1,    // sbtRecordStride
+                  1,    // missIndex
+                  origin, tmin, skyDirection, tmax,
+                  1 // payload location
+      );
+      if (shadowPrd.shadow == 0 &&
+          dot(skyDirection, materialData.shadingNormal) > 0.0) {
+        float sunPdf = getSunPdf(skyDirection);
+        float skyPdf = getSkyPdf(skyDirection, materialData.shadingNormal);
+        vec3 skyStrength = getSkyStrength(skyDirection);
+        vec3 bsdfWeight;
+        vec3 emissive;
+        evalStandardBsdf(prd, material, viewDirection, skyDirection, bsdfWeight,
+                         emissive);
+        float bsdfPdf =
+            evalStandardPdf(prd, material, viewDirection, skyDirection);
+        float misWeight =
+            misWeightPowerHeuristic(skyPdf, float[](sunPdf, skyPdf, bsdfPdf));
+        float cosTheta =
+            max(dot(skyDirection, materialData.shadingNormal), 0.0);
+        radiance += skyStrength * throughput * shadowPrd.transparent *
+                    bsdfWeight * cosTheta * misWeight / skyPdf;
       }
     }
 
@@ -156,26 +193,16 @@ void main() {
     }
 
     float sunPdf = 0.0;
+    float skyPdf = 0.0;
     if (pushConstants.sunEnabled == 1) {
-      if (isSunDirection(dir)) {
-        shadowPrd.shadow = 0;
-        shadowPrd.transparent = vec3(1.0);
-        traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
-                    0xff, // mask
-                    2,    // sbtRecordOffset
-                    1,    // sbtRecordStride
-                    1,    // missIndex
-                    origin, tmin, dir, tmax,
-                    1 // payload location
-        );
-        if (shadowPrd.shadow == 0) {
-          sunPdf = getSunPdf(dir);
-        }
-      }
+      sunPdf = getSunPdf(dir);
+    }
+    if (pushConstants.skyEnabled == 1) {
+      skyPdf = getSkyPdf(dir, materialData.shadingNormal);
     }
 
     float misWeight =
-        misWeightPowerHeuristic(bsdfPdf, float[](sunPdf, bsdfPdf));
+        misWeightPowerHeuristic(bsdfPdf, float[](sunPdf, skyPdf, bsdfPdf));
 
     direction = dir;
     throughput *= misWeight * bsdf * cosTheta / bsdfPdf;

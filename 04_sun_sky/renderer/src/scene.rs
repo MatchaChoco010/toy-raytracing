@@ -11,6 +11,7 @@ pub struct Instance {
 }
 
 pub struct Scene {
+    pub sky_texture_path: String,
     pub glbs: Vec<Glb>,
     pub instances: Vec<Instance>,
 }
@@ -43,6 +44,10 @@ pub(crate) struct SceneObjects {
     pub(crate) _images: Vec<ashtray::utils::ImageHandles>,
     pub(crate) _blas_list: Vec<ashtray::utils::BlasObjects>,
     pub(crate) tlas: ashtray::utils::TlasObjects,
+    pub(crate) sky_texture_width: u32,
+    pub(crate) sky_texture_height: u32,
+    pub(crate) sky_texture_buffer: ashtray::utils::BufferObjects,
+    pub(crate) sky_texture_cdf_buffer: ashtray::utils::BufferObjects,
 }
 pub(crate) fn load_scene(
     device: &ashtray::DeviceHandle,
@@ -318,10 +323,42 @@ pub(crate) fn load_scene(
         &materials,
     );
 
+    let sky_texture = image::open(&scene.sky_texture_path).unwrap();
+    let sky_texture_width = sky_texture.width();
+    let sky_texture_height = sky_texture.height();
+    let sky_data = sky_texture
+        .as_rgb32f()
+        .expect("Failed to load sky texture, only RGB32F is supported")
+        .enumerate_pixels()
+        .flat_map(|(_x, _y, p)| p.0)
+        .collect::<Vec<_>>();
+    let sky_texture_buffer = ashtray::utils::create_device_local_buffer_with_data(
+        device,
+        queue_handles,
+        transfer_command_pool,
+        allocator,
+        &sky_data,
+        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+    );
+    let sky_cdf_data =
+        vec![vec![1.0f32; sky_texture_width as usize + 1]; sky_texture_height as usize + 1];
+    let sky_texture_cdf_buffer = ashtray::utils::create_device_local_buffer_with_data(
+        device,
+        queue_handles,
+        transfer_command_pool,
+        allocator,
+        &sky_cdf_data,
+        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+    );
+
     SceneObjects {
         _sampler: sampler,
         _images: images,
         _blas_list: blas_list,
         tlas,
+        sky_texture_width,
+        sky_texture_height,
+        sky_texture_buffer,
+        sky_texture_cdf_buffer,
     }
 }
