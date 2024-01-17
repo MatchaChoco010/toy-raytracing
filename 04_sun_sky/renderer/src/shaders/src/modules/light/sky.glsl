@@ -3,32 +3,46 @@
 
 #include "../common.glsl"
 
-// cosine weighted hemisphereな方向サンプリング。
-// 引数のnormal及び返り値の方向はworld space。
-vec3 sampleSkyDirection(float[2] uu, vec3 normal) {
-  float up = sqrt(uu[0]);
-  float over = sqrt(1.0 - up * up);
-  float around = uu[1] * 2 * PI;
-  vec3 u = normalize(abs(normal.x) < 0.999 ? cross(normal, vec3(1, 0, 0))
-                                           : cross(normal, vec3(0, 1, 0)));
-  vec3 v = cross(normal, u);
-  return normalize(u * cos(around) * over + v * sin(around) * over +
-                   normal * up);
-}
-
 // Skyの方向のサンプリングに対応したpdfを返す。
 // 引数のnormalとdirectionはworld space。
-float getSkyPdf(vec3 normal, vec3 direction) {
-  return max(dot(normal, direction), 0) / PI;
+float getSkyPdf(vec3 direction) {
+  float theta = acos(direction.y);
+  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
+  while (phi < 0.0) {
+    phi += 2.0 * PI;
+  }
+  while (phi >= 2.0 * PI) {
+    phi -= 2.0 * PI;
+  }
+  int x = clamp(int(phi / (2.0 * PI) * pushConstants.skyWidth), 0,
+                int(pushConstants.skyWidth) - 1);
+  int y = clamp(int(theta / PI * pushConstants.skyHeight), 0,
+                int(pushConstants.skyHeight) - 1);
+
+  SkyPdfBuffer pdfColumn =
+      SkyPdfBuffer(pushConstants.skyPdfColumnBufferAddress);
+  SkyPdfBuffer pdfRow = SkyPdfBuffer(pushConstants.skyPdfRowBufferAddress);
+
+  float pdfY = pdfColumn.p[y];
+  float pdfX = pdfRow.p[y * pushConstants.skyWidth + x];
+
+  float pdf = pdfX * pdfY;
+  // Jacobian for theta and phi -> direction
+  pdf /= (2.0 * PI * PI * sin(theta));
+
+  return pdf;
 }
 
 // skyのテクスチャからdirectionの方向の放射輝度を線形補間して取得する。
 // directionはworld space。
 vec3 getSkyColor(vec3 direction) {
   float theta = acos(direction.y);
-  float phi = atan(direction.z, direction.x) - PI + pushConstants.skyRotation;
+  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
+  }
+  while (phi >= 2.0 * PI) {
+    phi -= 2.0 * PI;
   }
   float x = phi / (2.0 * PI) * pushConstants.skyWidth;
   float y = theta / PI * pushConstants.skyHeight;
@@ -58,9 +72,12 @@ vec3 getSkyColor(vec3 direction) {
 // directionはworld space。
 vec3 getSkyStrength(vec3 direction) {
   float theta = acos(direction.y);
-  float phi = atan(direction.z, direction.x) - PI + pushConstants.skyRotation;
+  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
+  }
+  while (phi >= 2.0 * PI) {
+    phi -= 2.0 * PI;
   }
   uint x = clamp(uint(phi / (2.0 * PI) * pushConstants.skyWidth), 0,
                  pushConstants.skyWidth - 1);
@@ -70,6 +87,85 @@ vec3 getSkyStrength(vec3 direction) {
   SkyBuffer skyBuffer = SkyBuffer(pushConstants.skyBufferAddress);
   return pushConstants.skyStrength *
          skyBuffer.pixel[y * pushConstants.skyWidth + x];
+}
+
+void sampleSky(float[2] u, out vec3 direction, out float pdf,
+               out vec3 radiance) {
+  int y;
+  float pdfY;
+  {
+    SkyCdfBuffer cdfColumn =
+        SkyCdfBuffer(pushConstants.skyCdfColumnBufferAddress);
+    SkyPdfBuffer pdfColumn =
+        SkyPdfBuffer(pushConstants.skyPdfColumnBufferAddress);
+    int first = 0;
+    int len = int(pushConstants.skyHeight + 1);
+    while (len > 0) {
+      int h = len >> 1;
+      int middle = first + h;
+      if (cdfColumn.value[middle] <= u[0]) {
+        first = middle + 1;
+        len = len - h - 1;
+      } else {
+        len = h;
+      }
+    }
+    y = clamp(first - 1, 0, int(pushConstants.skyHeight) - 1);
+    pdfY = pdfColumn.p[y];
+  }
+
+  int x;
+  float pdfX;
+  {
+    SkyCdfBuffer cdfRow = SkyCdfBuffer(pushConstants.skyCdfRowBufferAddress);
+    SkyPdfBuffer pdfRow = SkyPdfBuffer(pushConstants.skyPdfRowBufferAddress);
+    int first = 0;
+    int len = int(pushConstants.skyWidth + 1);
+    while (len > 0) {
+      int h = len >> 1;
+      int middle = first + h;
+      if (cdfRow.value[y * pushConstants.skyWidth + middle] <= u[1]) {
+        first = middle + 1;
+        len = len - h - 1;
+      } else {
+        len = h;
+      }
+    }
+    x = clamp(first - 1, 0, int(pushConstants.skyWidth) - 1);
+    pdfX = pdfRow.p[y * pushConstants.skyWidth + x];
+  }
+
+  float theta = (float(y) + 0.5) / pushConstants.skyHeight * PI;
+  float phi = (float(x) + 0.5) / pushConstants.skyWidth * 2.0 * PI -
+              pushConstants.skyRotation;
+  while (phi < 0.0) {
+    phi += 2.0 * PI;
+  }
+  while (phi >= 2.0 * PI) {
+    phi -= 2.0 * PI;
+  }
+  direction = vec3(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
+
+  pdf = pdfX * pdfY;
+  // Jacobian for u[2] -> direction
+  pdf /= (2.0 * PI * PI * sin(theta)) + 0.00001;
+
+  SkyBuffer skyBuffer = SkyBuffer(pushConstants.skyBufferAddress);
+  radiance = pushConstants.skyStrength *
+             skyBuffer.pixel[y * pushConstants.skyWidth + x];
+}
+
+float getSkyPdfSum() {
+  SkyPdfBuffer pdfColumn =
+      SkyPdfBuffer(pushConstants.skyPdfColumnBufferAddress);
+  SkyPdfBuffer pdfRow = SkyPdfBuffer(pushConstants.skyPdfRowBufferAddress);
+  float pdfSum = 0.0;
+  for (int i = 0; i < pushConstants.skyHeight; i++) {
+    for (int j = 0; j < pushConstants.skyWidth; j++) {
+      pdfSum += pdfColumn.p[i] * pdfRow.p[i * pushConstants.skyWidth + j];
+    }
+  }
+  return pdfSum;
 }
 
 #endif

@@ -128,9 +128,10 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     vec3 specularBrdf = evalGGXBrdf(brdfData, materialData);
     bsdf = weightSpecular * specularBrdf;
 
+    outDirection = normalize(brdfData.tbn * brdfData.L);
+
     cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
       return false;
     }
@@ -145,9 +146,10 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData);
     bsdf = weightDiffuse * diffuseBrdf;
 
+    outDirection = normalize(brdfData.tbn * brdfData.L);
+
     cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
       return false;
     }
@@ -162,9 +164,10 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
     bsdf = weightTransparent * transparentBtdf;
 
+    outDirection = normalize(brdfData.tbn * brdfData.L);
+
     cosTheta = 1.0;
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
     if (dot(outDirection, materialData.geometryNormal) > 0.0) {
       return false;
     }

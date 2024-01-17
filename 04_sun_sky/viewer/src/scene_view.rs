@@ -81,7 +81,7 @@ impl SceneView {
                     sun_color: glam::Vec3::ONE,
                     sun_enabled: 1,
                     sky_rotation: 0.0,
-                    sky_strength: 60000.0,
+                    sky_strength: 6000.0,
                     sky_enabled: 1,
                 })),
             })),

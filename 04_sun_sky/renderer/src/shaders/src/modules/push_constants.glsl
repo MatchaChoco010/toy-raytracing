@@ -25,7 +25,11 @@ layout(push_constant) uniform PushConstants {
   uint skyEnabled;
   uint[3] padding2;
   uint64_t skyBufferAddress;
-  uint64_t skyCdfBufferAddress;
+  uint64_t skyCdfRowBufferAddress;
+  uint64_t skyPdfRowBufferAddress;
+  uint64_t skyCdfColumnBufferAddress;
+  uint64_t skyPdfColumnBufferAddress;
+  uint[2] padding3;
 }
 pushConstants;
 

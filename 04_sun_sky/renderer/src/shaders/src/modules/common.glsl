@@ -67,6 +67,7 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Vertices {
 layout(buffer_reference, scalar) buffer Indices { uvec3 i[]; };
 layout(buffer_reference, scalar) buffer SkyBuffer { vec3 pixel[]; };
 layout(buffer_reference, scalar) buffer SkyCdfBuffer { float value[]; };
+layout(buffer_reference, scalar) buffer SkyPdfBuffer { float p[]; };
 
 // utilities
 

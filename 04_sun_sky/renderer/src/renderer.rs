@@ -28,7 +28,11 @@ struct PushConstants {
     sky_enabled: u32,
     padding_2: [u32; 3],
     sky_buffer_address: u64,
-    sky_cdf_buffer_address: u64,
+    sky_cdf_row_buffer_address: u64,
+    sky_pdf_row_buffer_address: u64,
+    sky_cdf_column_buffer_address: u64,
+    sky_pdf_column_buffer_address: u64,
+    padding_3: [u32; 2],
 }
 
 #[repr(C)]
@@ -559,10 +563,14 @@ impl Renderer {
                 sky_strength: self.params.sky_strength,
                 sky_enabled: self.params.sky_enabled,
                 sky_buffer_address: scene.sky_texture_buffer.device_address,
-                sky_cdf_buffer_address: scene.sky_texture_cdf_buffer.device_address,
+                sky_cdf_row_buffer_address: scene.sky_texture_cdf_row_buffer.device_address,
+                sky_pdf_row_buffer_address: scene.sky_texture_pdf_row_buffer.device_address,
+                sky_cdf_column_buffer_address: scene.sky_texture_cdf_column_buffer.device_address,
+                sky_pdf_column_buffer_address: scene.sky_texture_pdf_column_buffer.device_address,
                 padding_0: [0; 2],
                 padding_1: [0; 1],
                 padding_2: [0; 3],
+                padding_3: [0; 2],
             }],
         );
 
