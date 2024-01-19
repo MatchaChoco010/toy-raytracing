@@ -20,10 +20,10 @@ vec3 baseColorToDiffuseReflectance(vec3 baseColor, float metallic) {
   return diffuseReflectance;
 }
 
-// フレネル項をF0とライトとハーフベクトルの内積から計算する。
-vec3 Fresnel(vec3 F0, float LoH) {
-  vec3 n = (1 + sqrt(F0)) / (1 - sqrt(F0));
-  float c = LoH;
+// フレネル項をF0とビューベクトルと法線ベクトルの内積から計算する。
+vec3 Fresnel(vec3 F0, float NoV) {
+  vec3 n = (1 + sqrt(F0)) / (1 - sqrt(F0) + 0.00001);
+  float c = NoV;
   vec3 g2 = n * n + c * c - 1;
   vec3 g = sqrt(g2);
   vec3 f = (1 * (g - c) * (g - c)) / (2 * (g + c) * (g + c)) *
@@ -41,8 +41,6 @@ struct MaterialData {
   vec3 shadingNormal;  // world space
   vec3 geometryNormal; // world space
   float alpha;
-  // local space to world space for shading normal
-  mat3 tbn;
 };
 
 // テクスチャとhit情報のPrdからマテリアルのデータを取得する。
@@ -88,38 +86,39 @@ MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
 
   vec3 geometryNormal;
   vec3 shadingNormal;
-  if (material.normalTextureIndex == -1) {
-    geometryNormal = normalize(prd.hitGeometryNormal);
-    shadingNormal = normalize(prd.hitShadingNormal);
-    if (dot(geometryNormal, viewDirection) < 0.0) {
-      geometryNormal = -geometryNormal;
-    }
-    if (dot(shadingNormal, geometryNormal) < 0.0) {
-      shadingNormal = -shadingNormal;
-    }
-  } else {
-    geometryNormal = normalize(prd.hitGeometryNormal);
-    shadingNormal = normalize(prd.hitShadingNormal);
-    vec3 tangent = normalize(prd.hitTangent);
-    if (dot(geometryNormal, viewDirection) < 0.0) {
-      geometryNormal = -geometryNormal;
-    }
-    if (dot(shadingNormal, geometryNormal) < 0.0) {
-      shadingNormal = -shadingNormal;
-      tangent = -tangent;
-    }
-    vec3 bitangent = cross(shadingNormal, tangent);
-    tangent = cross(bitangent, shadingNormal);
-    mat3 tbn = mat3(tangent, bitangent, shadingNormal);
-
-    vec3 normalFromTexture =
-        texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb;
-    normalFromTexture = normalize(normalFromTexture * 2.0 - 1.0);
-    normalFromTexture = normalize(tbn * normalFromTexture);
-
-    shadingNormal =
-        normalize(mix(shadingNormal, normalFromTexture, material.normalFactor));
+  // if (material.normalTextureIndex == -1) {
+  geometryNormal = normalize(prd.hitGeometryNormal);
+  shadingNormal = normalize(prd.hitShadingNormal);
+  if (dot(geometryNormal, viewDirection) < 0.0) {
+    geometryNormal = -geometryNormal;
   }
+  if (dot(shadingNormal, geometryNormal) < 0.0) {
+    shadingNormal = -shadingNormal;
+  }
+  // } else {
+  //   geometryNormal = normalize(prd.hitGeometryNormal);
+  //   shadingNormal = normalize(prd.hitShadingNormal);
+  //   vec3 tangent = normalize(prd.hitTangent);
+  //   if (dot(geometryNormal, viewDirection) < 0.0) {
+  //     geometryNormal = -geometryNormal;
+  //   }
+  //   if (dot(shadingNormal, geometryNormal) < 0.0) {
+  //     shadingNormal = -shadingNormal;
+  //     tangent = -tangent;
+  //   }
+  //   vec3 bitangent = cross(shadingNormal, tangent);
+  //   tangent = cross(bitangent, shadingNormal);
+  //   mat3 tbn = mat3(tangent, bitangent, shadingNormal);
+
+  //   vec3 normalFromTexture =
+  //       texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb;
+  //   normalFromTexture = normalize(normalFromTexture * 2.0 - 1.0);
+  //   normalFromTexture = normalize(tbn * normalFromTexture);
+
+  //   shadingNormal =
+  //       normalize(mix(shadingNormal, normalFromTexture,
+  //       material.normalFactor));
+  // }
 
   MaterialData data;
   data.baseColor = baseColor;
@@ -140,8 +139,6 @@ struct BrdfData {
   float alpha;
 
   vec3 V; // view direction in local space for shading normal
-  vec3 N; // shading normal in local space for shading normal
-  vec3 L; // light direction in local space for shading normal
 
   mat3 tbn; // local space to world space for shading normal
 };
@@ -154,18 +151,20 @@ BrdfData getBrdfData(MaterialData material, vec3 viewDirection) {
   } else {
     tangent = normalize(cross(material.shadingNormal, vec3(0.0, 1.0, 0.0)));
   }
-  vec3 bitangent = cross(material.shadingNormal, tangent);
+  vec3 bitangent = normalize(cross(material.shadingNormal, tangent));
   mat3 tbn = mat3(tangent, bitangent, material.shadingNormal);
 
   BrdfData data;
   data.specularF0 =
       baseColorToSpecularF0(material.baseColor, material.metallic);
-  data.diffuseReflectance = material.baseColor;
-  // baseColorToDiffuseReflectance(material.baseColor, material.metallic);
+  data.diffuseReflectance =
+      baseColorToDiffuseReflectance(material.baseColor, material.metallic);
   data.alpha = material.roughness * material.roughness;
+
   data.V = normalize(inverse(tbn) * viewDirection);
-  data.N = vec3(0.0, 0.0, 1.0);
+
   data.tbn = tbn;
+
   return data;
 }
 

@@ -1,95 +1,140 @@
 #ifndef _BXDF_GGX_GLSL_
 #define _BXDF_GGX_GLSL_
+#extension GL_EXT_debug_printf : enable
 
 #include "bxdf_common.glsl"
 
-// Source: "Sampling Visible GGX Normals with Spherical Caps" by Dupuy & Benyoub
-vec3 sampleGGXVNDF(vec2 u, BrdfData brdf) {
-  vec2 alpha2 = vec2(brdf.alpha, brdf.alpha);
-  vec3 Vh = normalize(vec3(alpha2.x * brdf.V.x, alpha2.y * brdf.V.y, brdf.V.z));
-  float phi = 2.0 * PI * u.x;
-  float z = ((1.0 - u.y) * (1.0 + Vh.z)) - Vh.z;
-  float sinTheta = sqrt(clamp(1.0 - z * z, 0.0, 1.0));
-  float x = cos(phi) * sinTheta;
-  float y = sin(phi) * sinTheta;
-  vec3 Nh = vec3(x, y, z) + Vh;
-  return normalize(vec3(alpha2.x * Nh.x, alpha2.y * Nh.y, max(Nh.z, 0.0)));
+float Smith_G1_std(vec3 N, vec3 S) {
+  float NoS = clamp(dot(N, S), 0.00001, 1.0);
+  float sigma_std = (1 + S.z) / 2;
+  return NoS * S.z / sigma_std;
 }
 
-// Smith G1 term (masking function)のGGX distribution向けoptimizedバージョン (by
-// substituting G_a into G1_GGX)
-float Smith_G1_GGX(float alpha, float NoS) {
-  float a2 = alpha * alpha;
-  float NoS2 = NoS * NoS;
-  return 2.0f / (sqrt(((a2 * (1.0f - NoS2)) + NoS2) / NoS2) + 1.0f);
+// GGXのMasking-shadowing関数
+// Source: Sampling Visible GGX Normals with Spherical Caps
+float Smith_G1_GGX(float alpha, vec3 S) {
+  vec3 M = vec3(1.0 / alpha, 1.0 / alpha, 1.0);
+  vec3 Mi = vec3(alpha, alpha, 1.0);
+  vec3 N = vec3(0.0, 0.0, 1.0);
+  return Smith_G1_std(M * N / sqrt(dot(M * N, M * N)),
+                      Mi * S / sqrt(dot(Mi * S, Mi * S)));
 }
 
-// G2/G1のheight correlatedはG1項だけで書ける
-// Source: "Implementing a Simple Anisotropic Rough Diffuse Material with
-// Stochastic Evaluation", Appendix A by Heitz & Dupuy
-float Smith_G2_Over_G1_Height_Correlated(float alpha, float NoV, float NoL) {
-  float G1V = Smith_G1_GGX(alpha, NoV);
-  float G1L = Smith_G1_GGX(alpha, NoL);
-  return G1L / (G1V + G1L - G1V * G1L);
+float D_std(vec3 H) {
+  if (H.z <= 0.0) {
+    return 0.0;
+  }
+  return 1.0 / PI;
 }
 
-// GGXの法線分布関数を返す。
-float GGX_D(float alpha, float NoH) {
-  float b = ((alpha * alpha - 1.0f) * NoH * NoH + 1.0f);
-  return alpha * alpha / (PI * b * b);
+// GGXの法線分布関数
+// Source: Sampling Visible GGX Normals with Spherical Caps
+float D_GGX(float alpha, vec3 H) {
+  vec3 M = vec3(1.0 / alpha, 1.0 / alpha, 1.0);
+
+  float detMt = abs(M.x * M.z);
+  vec3 MtH = M * H;
+  float MtH2 = dot(MtH, MtH);
+  float MtH4 = MtH2 * MtH2;
+  float J = detMt / MtH4;
+
+  vec3 v = M * H / sqrt(dot(M * H, M * H));
+
+  return D_std(v) * J;
 }
 
-// (brdf * VNDFサンプリングのpdf)の値を返す。
-// VNDFのpdfとGGXのBRDFは打ち消し合って最終的にはF * (G2 / G1)になる。
-vec3 evalWeightGGXVNDF(BrdfData brdf) {
-  vec3 H = normalize(brdf.V + brdf.L);
-  float HoL = clamp(dot(H, brdf.L), 0.00001, 1.0);
-  float NoL = clamp(dot(brdf.N, brdf.L), 0.00001, 1.0);
-  float NoV = clamp(dot(brdf.N, brdf.V), 0.00001, 1.0);
-  float NoH = clamp(dot(brdf.N, H), 0.00001, 1.0);
+// Sampling the visible hemisphere as half vectors
+// Source: Sampling Visible GGX Normals with Spherical Caps
+vec3 SampleVndf_Hemisphere(vec2 u, vec3 wi) {
+  // sample a spherical cap in (-wi.z, 1]
+  float phi = 2.0f * PI * u.x;
+  float z = fma((1.0f - u.y), -wi.z, (1.0f + wi.z));
+  float sinTheta = sqrt(clamp(1.0f - z * z, 0.0f, 1.0f));
+  float x = sinTheta * cos(phi);
+  float y = sinTheta * sin(phi);
+  vec3 c = vec3(x, y, z);
+  // compute halfway direction;
+  vec3 h = c + wi;
+  // return without normalization (as this is done later)
+  return h;
+}
 
-  vec3 F = Fresnel(brdf.specularF0, HoL);
-
-  vec3 weight = F * Smith_G2_Over_G1_Height_Correlated(brdf.alpha, NoV, NoL);
-
-  return weight;
+// Source: Sampling Visible GGX Normals with Spherical Caps
+vec3 SampleVndf_GGX(vec2 u, vec3 wi, float alpha) {
+  // warp to the hemisphere configuration
+  vec3 wiStd = normalize(vec3(wi.x * alpha, wi.y * alpha, wi.z));
+  // sample the hemisphere (see implementation 2 or 3)
+  vec3 wmStd = SampleVndf_Hemisphere(u, wiStd);
+  // warp back to the ellipsoid configuration
+  vec3 wm = normalize(vec3(wmStd.x * alpha, wmStd.y * alpha, wmStd.z));
+  // return final normal
+  return wm;
 }
 
 // GGX反射用の方向サンプリング方法。
 // VNDFサンプリングをして、その方向をハーフベクとする方向を反射方向とする。
-// roughnessが0の場合はサンプリングせずにハーフベクトルを(0, 0, 1)にしている。
+// roughnessが0の場合は完全鏡面として扱い、
+// サンプリングせずにハーフベクトルを(0, 0, 1)にしている。
 vec3 sampleGGXDirection(vec2 u, BrdfData brdf) {
-  vec3 H;
   if (brdf.alpha == 0.0) {
-    H = vec3(0.0, 0.0, 1.0);
+    vec3 H = vec3(0.0, 0.0, 1.0);
+    return normalize(reflect(-brdf.V, H));
   } else {
-    H = sampleGGXVNDF(u, brdf);
+    vec3 H = SampleVndf_GGX(u, brdf.V, brdf.alpha);
+    return normalize(reflect(-brdf.V, H));
   }
-
-  vec3 L = normalize(reflect(-brdf.V, H));
-
-  return L;
 }
 
 // GGX反射用方向サンプリングに対応したpdfの値を計算する。
-float evalGGXPdf(BrdfData brdf, MaterialData material) {
-  float alpha = material.roughness * material.roughness;
+float evalGGXPdf(BrdfData brdf, MaterialData material, vec3 L) {
+  vec3 H = normalize(brdf.V + L);
+  vec3 N = vec3(0.0, 0.0, 1.0);
+  float NoH = dot(N, H);
+  float HoL = dot(H, L);
+  float NoL = max(dot(N, L), 0.00001);
 
-  vec3 H = normalize(brdf.V + brdf.L);
-  float NoH = clamp(dot(brdf.N, H), 0.00001, 1.0);
-  float HoL = clamp(dot(H, brdf.L), 0.00001, 1.0);
+  float G1l = Smith_G1_GGX(brdf.alpha, L);
+  float D = D_GGX(brdf.alpha, H);
 
-  float D = GGX_D(alpha, NoH);
-  return D * NoH / (4.0 * HoL);
+  // 完全鏡面の場合は幾何減衰を1、Dを1とする。
+  if (brdf.alpha <= 0.00001 && NoH > 0.9999) {
+    G1l = 1.0;
+    D = 1.0;
+  }
+
+  return G1l * D / (4.0 * NoL);
 }
 
 // GGXのBRDFの値を計算する。
 // weightの計算とpdfの計算からbrdfの値を求めている。
-vec3 evalGGXBrdf(BrdfData brdf, MaterialData material) {
-  // weight = brdf / pdf
-  vec3 weight = evalWeightGGXVNDF(brdf);
-  float pdf = evalGGXPdf(brdf, material);
-  return weight * pdf;
+vec3 evalGGXBrdf(BrdfData brdf, MaterialData material, vec3 L) {
+  vec3 H = normalize(brdf.V + L);
+  vec3 N = vec3(0.0, 0.0, 1.0);
+
+  float NoH = dot(N, H);
+  float HoV = dot(H, brdf.V);
+  float NoV = max(dot(N, brdf.V), 0.00001);
+  float NoL = max(dot(N, L), 0.00001);
+
+  vec3 F = Fresnel(brdf.specularF0, HoV);
+  float G1v = Smith_G1_GGX(brdf.alpha, brdf.V);
+  float G1l = Smith_G1_GGX(brdf.alpha, L);
+  float G2 = G1l * G1v / (G1v + G1l - G1v * G1l);
+  float D = D_GGX(brdf.alpha, H);
+
+  // 完全鏡面の場合は幾何減衰を1、Dを1とする
+  if (brdf.alpha <= 0.00001 && NoH > 0.9999) {
+    G2 = 1.0;
+    D = 1.0;
+  }
+
+  vec3 f = F * G2 * D / (4.0 * NoV * NoL);
+
+  if (isnan(f.x) || isnan(f.y) || isnan(f.z)) {
+    return vec3(0.0);
+  }
+
+  return f;
 }
 
 #endif

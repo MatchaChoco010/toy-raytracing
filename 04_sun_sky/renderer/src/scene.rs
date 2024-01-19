@@ -333,7 +333,8 @@ pub(crate) fn load_scene(
         .as_rgb32f()
         .expect("Failed to load sky texture, only RGB32F is supported")
         .enumerate_pixels()
-        .flat_map(|(_x, _y, p)| p.0)
+        // .flat_map(|(_x, _y, p)| p.0)
+        .flat_map(|(_x, _y, p)| [0.9, 0.9, 0.9])
         .collect::<Vec<_>>();
     let sky_texture_buffer = ashtray::utils::create_device_local_buffer_with_data(
         device,
@@ -344,16 +345,16 @@ pub(crate) fn load_scene(
         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
     );
 
-    fn luminance(rgb: glam::Vec3) -> f32 {
-        rgb.dot(glam::vec3(0.2126, 0.7152, 0.0722))
+    fn luminance(rgb: glam::Vec3) -> f64 {
+        0.2126 * rgb.x as f64 + 0.7152 * rgb.y as f64 + 0.0722 * rgb.z as f64
     }
 
-    let mut sky_cdf_row_data =
-        vec![vec![0.0f32; sky_texture_width as usize + 1]; sky_texture_height as usize];
+    let mut sky_cdf_row_sum_data =
+        vec![vec![0.0f64; sky_texture_width as usize + 1]; sky_texture_height as usize];
     for y in 0..sky_texture_height as usize {
         for x in 0..sky_texture_width as usize {
             let index = y * (sky_texture_width as usize) + x;
-            sky_cdf_row_data[y][x + 1] = sky_cdf_row_data[y][x]
+            sky_cdf_row_sum_data[y][x + 1] = sky_cdf_row_sum_data[y][x]
                 + luminance(glam::vec3(
                     sky_data[index * 3],
                     sky_data[index * 3 + 1],
@@ -361,15 +362,18 @@ pub(crate) fn load_scene(
                 ));
         }
     }
+    let mut sky_cdf_row_data =
+        vec![vec![0.0f64; sky_texture_width as usize + 1]; sky_texture_height as usize];
     for y in 0..sky_texture_height as usize {
-        for x in 0..sky_texture_width as usize {
-            sky_cdf_row_data[y][x + 1] /= sky_cdf_row_data[y][sky_texture_width as usize];
+        for x in 0..sky_texture_width as usize + 1 {
+            sky_cdf_row_data[y][x] =
+                sky_cdf_row_sum_data[y][x] / sky_cdf_row_sum_data[y][sky_texture_width as usize];
         }
     }
     let sky_cdf_row_data_flatten = sky_cdf_row_data
         .iter()
         .flatten()
-        .copied()
+        .map(|v| *v as f32)
         .collect::<Vec<_>>();
     let sky_texture_cdf_row_buffer = ashtray::utils::create_device_local_buffer_with_data(
         device,
@@ -381,11 +385,16 @@ pub(crate) fn load_scene(
     );
 
     let mut sky_pdf_row_data =
-        vec![vec![0.0f32; sky_texture_width as usize]; sky_texture_height as usize];
+        vec![vec![0.0f64; sky_texture_width as usize]; sky_texture_height as usize];
     for y in 0..sky_texture_height as usize {
         for x in 0..sky_texture_width as usize {
-            sky_pdf_row_data[y][x] =
-                (sky_cdf_row_data[y][x + 1] - sky_cdf_row_data[y][x]) * sky_texture_width as f32;
+            let index = y * (sky_texture_width as usize) + x;
+            sky_pdf_row_data[y][x] = luminance(glam::vec3(
+                sky_data[index * 3],
+                sky_data[index * 3 + 1],
+                sky_data[index * 3 + 2],
+            )) / sky_cdf_row_sum_data[y][sky_texture_width as usize]
+                * sky_texture_width as f64;
         }
     }
     let sky_pdf_row_data_flatten = sky_pdf_row_data
@@ -402,7 +411,7 @@ pub(crate) fn load_scene(
         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
     );
 
-    let mut sky_cdf_column_data = vec![0.0f32; sky_texture_height as usize + 1];
+    let mut sky_cdf_column_data = vec![0.0f64; sky_texture_height as usize + 1];
     for y in 0..sky_texture_height as usize {
         sky_cdf_column_data[y + 1] =
             sky_cdf_column_data[y] + sky_cdf_row_data[y][sky_texture_width as usize];
@@ -419,11 +428,15 @@ pub(crate) fn load_scene(
         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
     );
 
-    let mut sky_pdf_column_data = vec![0.0f32; sky_texture_height as usize];
+    let mut sky_pdf_column_data = vec![0.0f64; sky_texture_height as usize];
     for y in 0..sky_texture_height as usize {
         sky_pdf_column_data[y] =
-            (sky_cdf_column_data[y + 1] - sky_cdf_column_data[y]) * sky_texture_height as f32;
+            (sky_cdf_column_data[y + 1] - sky_cdf_column_data[y]) * sky_texture_height as f64;
     }
+    let sky_pdf_column_data = sky_pdf_column_data
+        .iter()
+        .map(|v| *v as f32)
+        .collect::<Vec<_>>();
     let sky_texture_pdf_column_buffer = ashtray::utils::create_device_local_buffer_with_data(
         device,
         queue_handles,

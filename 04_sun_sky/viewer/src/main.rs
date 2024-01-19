@@ -84,42 +84,45 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
             sky_texture_path: "assets/sky/scythian_tombs_2_1k.exr".into(),
             glbs: vec![
                 renderer::Glb {
-                    path: "assets/glb/dragon-1.glb".into(),
+                    path: "assets/glb/sphere.glb".into(),
                 },
-                renderer::Glb {
-                    path: "assets/glb/dragon-2.glb".into(),
-                },
-                renderer::Glb {
-                    path: "assets/glb/dragon-3.glb".into(),
-                },
-                renderer::Glb {
-                    path: "assets/glb/plane.glb".into(),
-                },
-                renderer::Glb {
-                    path: "assets/glb/light.glb".into(),
-                },
+                // renderer::Glb {
+                //     path: "assets/glb/dragon-1.glb".into(),
+                // },
+                // renderer::Glb {
+                //     path: "assets/glb/dragon-2.glb".into(),
+                // },
+                // renderer::Glb {
+                //     path: "assets/glb/dragon-3.glb".into(),
+                // },
+                // renderer::Glb {
+                //     path: "assets/glb/plane.glb".into(),
+                // },
+                // renderer::Glb {
+                //     path: "assets/glb/light.glb".into(),
+                // },
             ],
             instances: vec![
                 renderer::Instance {
                     glb_index: 0,
                     transform: glam::Mat4::IDENTITY,
                 },
-                renderer::Instance {
-                    glb_index: 1,
-                    transform: glam::Mat4::IDENTITY,
-                },
-                renderer::Instance {
-                    glb_index: 2,
-                    transform: glam::Mat4::IDENTITY,
-                },
-                renderer::Instance {
-                    glb_index: 3,
-                    transform: glam::Mat4::IDENTITY,
-                },
-                renderer::Instance {
-                    glb_index: 4,
-                    transform: glam::Mat4::from_translation(glam::vec3(-2.0, 0.0, 0.0)),
-                },
+                // renderer::Instance {
+                //     glb_index: 1,
+                //     transform: glam::Mat4::IDENTITY,
+                // },
+                // renderer::Instance {
+                //     glb_index: 2,
+                //     transform: glam::Mat4::IDENTITY,
+                // },
+                // renderer::Instance {
+                //     glb_index: 3,
+                //     transform: glam::Mat4::IDENTITY,
+                // },
+                // renderer::Instance {
+                //     glb_index: 4,
+                //     transform: glam::Mat4::from_translation(glam::vec3(-2.0, 0.0, 0.0)),
+                // },
             ],
         };
         renderer.load_scene(&scene);

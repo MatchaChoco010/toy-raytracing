@@ -1,5 +1,6 @@
 #ifndef _BXDF_STANDARD_GLSL_
 #define _BXDF_STANDARD_GLSL_
+#extension GL_EXT_debug_printf : enable
 
 #include "../common.glsl"
 #include "../distribute_1d.glsl"
@@ -16,28 +17,29 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
 
   emissive = materialData.emissive;
 
-  float NoV = clamp(dot(brdfData.N, brdfData.V), 0.00001, 1.0);
-  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
+  vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
+
+  vec3 H = normalize(L + brdfData.V);
+  float HoL = clamp(dot(H, L), 0.0, 1.0);
+  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, HoL));
   kD *= 1.0 - materialData.metallic;
   kD = clamp(kD, 0.0, 1.0);
 
-  brdfData.L = normalize(inverse(brdfData.tbn) * outDirection);
-
   if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
-    vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
+    vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData, L);
     bsdfWeight = (1.0 - materialData.alpha) * transparentBtdf;
-  } else if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
+  } else if (dot(outDirection, materialData.shadingNormal) > 0.0) {
     // 反射の場合
     bsdfWeight = vec3(0.0);
 
     // diffuse
-    vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData);
-    bsdfWeight += (kD / (1.0 + kD)) * diffuseBrdf;
+    vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData, L);
+    bsdfWeight += kD * diffuseBrdf;
 
     // specular
-    vec3 specularBrdf = evalGGXBrdf(brdfData, materialData);
-    bsdfWeight += (1.0 / (1.0 + kD)) * specularBrdf;
+    vec3 specularBrdf = evalGGXBrdf(brdfData, materialData, L);
+    bsdfWeight += 1.0 * specularBrdf;
   } else {
     bsdfWeight = vec3(0.0);
   }
@@ -48,9 +50,9 @@ vec3 evalStandardBsdfTransparent(Prd prd, Material material,
                                  vec3 viewDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
-  brdfData.L = normalize(inverse(brdfData.tbn) * -viewDirection);
+  vec3 L = normalize(inverse(brdfData.tbn) * -viewDirection);
 
-  vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
+  vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData, L);
   return (1.0 - materialData.alpha) * transparentBtdf;
 }
 
@@ -62,15 +64,13 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
-  float NoV = clamp(dot(brdfData.N, brdfData.V), 0.00001, 1.0);
-  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
-  kD *= 1.0 - materialData.metallic;
-  kD = clamp(kD, 0.0, 1.0);
+  vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
 
-  brdfData.L = normalize(inverse(brdfData.tbn) * outDirection);
-
-  float weightSpecular = 1.0 / (1.0 + kD) * materialData.alpha;
-  float weightDiffuse = kD / (1.0 + kD) * materialData.alpha;
+  float weightSpecular = 1.0;
+  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
+  float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
+  weightDiffuse *= 1.0 - materialData.metallic;
+  weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
   float weightTransparent = 1.0 - materialData.alpha;
   float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
@@ -79,11 +79,11 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
   float transparentPdf = 0.0;
   if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
     // 反射の場合
-    specularPdf = evalGGXPdf(brdfData, materialData);
-    diffusePdf = evalLambertPdf(brdfData, materialData);
+    specularPdf = evalGGXPdf(brdfData, materialData, L);
+    diffusePdf = evalLambertPdf(brdfData, materialData, L);
   } else if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
-    transparentPdf = evalTransparentPdf(brdfData, materialData);
+    transparentPdf = evalTransparentPdf(brdfData, materialData, L);
   }
 
   return getPdfDistribute1D(func, 0) * specularPdf +
@@ -104,14 +104,19 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
 
   emissive = materialData.emissive;
 
-  float NoV = clamp(dot(brdfData.N, brdfData.V), 0.00001, 1.0);
-  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
-  kD *= 1.0 - materialData.metallic;
-  kD = clamp(kD, 0.0, 1.0);
+  float weightSpecular = 1.0;
 
-  float weightSpecular = 1.0 / (1.0 + kD);
-  float weightDiffuse = kD / (1.0 + kD);
+  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
+  if (NoV == 0.0) {
+    return false;
+  }
+
+  float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
+  weightDiffuse *= 1.0 - materialData.metallic;
+  weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
+
   float weightTransparent = 1.0 - materialData.alpha;
+
   float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
   uint bsdfType;
@@ -121,56 +126,50 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
   case 0: {
     // specular
     vec2 uu = vec2(u[1], u[2]);
-    brdfData.L = sampleGGXDirection(uu, brdfData);
-    pdf = evalGGXPdf(brdfData, materialData);
+    vec3 L = sampleGGXDirection(uu, brdfData);
+    pdf = evalGGXPdf(brdfData, materialData, L);
     pdf *= pdfBsdfSelect;
 
-    vec3 specularBrdf = evalGGXBrdf(brdfData, materialData);
-    bsdf = weightSpecular * specularBrdf;
+    bsdf = weightSpecular * evalGGXBrdf(brdfData, materialData, L);
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
+    outDirection = normalize(brdfData.tbn * L);
 
     cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
 
-    if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
+    if (dot(outDirection, materialData.geometryNormal) < 0.0) {
       return false;
     }
   } break;
   case 1: {
     // diffuse
     vec2 uu = vec2(u[1], u[2]);
-    brdfData.L = sampleLambertDirection(uu, brdfData);
-    pdf = evalLambertPdf(brdfData, materialData);
+    vec3 L = sampleLambertDirection(uu, brdfData);
+    pdf = evalLambertPdf(brdfData, materialData, L);
     pdf *= pdfBsdfSelect;
 
-    vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData);
-    bsdf = weightDiffuse * diffuseBrdf;
+    bsdf = weightDiffuse * evalLambertBrdf(brdfData, materialData, L);
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
+    outDirection = normalize(brdfData.tbn * L);
 
+    // cosTheta = abs(dot(outDirection, materialData.shadingNormal));
     cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
 
-    if (dot(outDirection, materialData.geometryNormal) <= 0.0) {
+    if (dot(outDirection, materialData.geometryNormal) < 0.0) {
       return false;
     }
   } break;
   case 2:
     // transparent
     vec2 uu = vec2(u[1], u[2]);
-    brdfData.L = sampleTransparentDirection(uu, brdfData);
-    pdf = evalTransparentPdf(brdfData, materialData);
+    vec3 L = sampleTransparentDirection(uu, brdfData);
+    pdf = evalTransparentPdf(brdfData, materialData, L);
     pdf *= pdfBsdfSelect;
 
-    vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData);
-    bsdf = weightTransparent * transparentBtdf;
+    bsdf = weightTransparent * evalTransparentBtdf(brdfData, materialData, L);
 
-    outDirection = normalize(brdfData.tbn * brdfData.L);
+    outDirection = normalize(brdfData.tbn * L);
 
     cosTheta = 1.0;
-
-    if (dot(outDirection, materialData.geometryNormal) > 0.0) {
-      return false;
-    }
     break;
   }
 

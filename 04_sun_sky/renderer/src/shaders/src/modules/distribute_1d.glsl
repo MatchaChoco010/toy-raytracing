@@ -31,7 +31,7 @@ float samplePdfDistribute1D(float u, float[DISTRIBUTE_1D_COUNT] func,
   }
   index = clamp(first - 1, 0, n - 1);
 
-  float pdf = func[index] / funcSum * func.length();
+  float pdf = func[index] / funcSum;
   return pdf;
 }
 
@@ -40,7 +40,7 @@ float getPdfDistribute1D(float[DISTRIBUTE_1D_COUNT] func, uint index) {
   for (int i = 0; i < func.length(); i++) {
     funcSum += func[i];
   }
-  float pdf = func[index] / funcSum * func.length();
+  float pdf = func[index] / funcSum;
   return pdf;
 }
 

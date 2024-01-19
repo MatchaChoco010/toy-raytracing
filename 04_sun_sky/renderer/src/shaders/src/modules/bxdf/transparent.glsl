@@ -8,11 +8,13 @@
 vec3 sampleTransparentDirection(vec2 uu, BrdfData brdf) { return -brdf.V; }
 
 // 透過色のサンプリングのpdfを計算する。
-float evalTransparentPdf(BrdfData brdf, MaterialData material) { return 1.0; }
+float evalTransparentPdf(BrdfData brdf, MaterialData material, vec3 L) {
+  return 1.0;
+}
 
 // 透過色による減衰を計算する。
 // brdf.Lとbrdf.Vが完全に反対を向いていることを想定している。
-vec3 evalTransparentBtdf(BrdfData brdf, MaterialData material) {
+vec3 evalTransparentBtdf(BrdfData brdf, MaterialData material, vec3 L) {
   // transmissionColorはユーザーが与えるべき値だけど、
   // 今回はbaseColorとalphaから適当に決める。
   // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
