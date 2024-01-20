@@ -7,7 +7,7 @@
 // 引数のnormalとdirectionはworld space。
 float getSkyPdf(vec3 direction) {
   float theta = acos(direction.y);
-  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
+  float phi = atan(direction.x, direction.z) + pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
   }
@@ -40,7 +40,7 @@ float getSkyPdf(vec3 direction) {
 // directionはworld space。
 vec3 getSkyColor(vec3 direction) {
   float theta = acos(direction.y);
-  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
+  float phi = atan(direction.x, direction.z) + pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
   }
@@ -75,7 +75,7 @@ vec3 getSkyColor(vec3 direction) {
 // directionはworld space。
 vec3 getSkyStrength(vec3 direction) {
   float theta = acos(direction.y);
-  float phi = atan(-direction.x, direction.z) + pushConstants.skyRotation;
+  float phi = atan(direction.x, direction.z) + pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
   }
@@ -139,7 +139,6 @@ void sampleSky(float[2] u, out vec3 direction, out float pdf,
     pdfX = pdfRow.p[y * pushConstants.skyWidth + x];
   }
 
-  // float theta = acos(1 - 2 * (float(y)) / pushConstants.skyHeight);
   float theta = float(y) / pushConstants.skyHeight * PI;
   float phi = (float(x) / (pushConstants.skyWidth - 1)) * 2.0 * PI -
               pushConstants.skyRotation;
@@ -149,7 +148,7 @@ void sampleSky(float[2] u, out vec3 direction, out float pdf,
   while (phi >= 2.0 * PI) {
     phi -= 2.0 * PI;
   }
-  direction = vec3(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
+  direction = vec3(sin(theta) * sin(phi), cos(theta), sin(theta) * cos(phi));
 
   float pdfPhi = pdfX * pushConstants.skyWidth;
   float pdfTheta = pdfY * pushConstants.skyHeight;

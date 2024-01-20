@@ -108,17 +108,6 @@ float evalGGXPdf(BrdfData brdf, MaterialData material, vec3 L) {
   float G1v = Smith_G1_GGX(brdf.alpha, NoV);
   float D = D_GGX(brdf.alpha, H);
 
-  // // 完全鏡面の場合は個別対応
-  // if (brdf.alpha == 0.0) {
-  //   if (NoH > 0.9999999) {
-  //     G1v = 1.0;
-  //     D = 1.0;
-  //   } else {
-  //     D = 0.0;
-  //     G1v = 0.0;
-  //   }
-  // }
-
   return G1v * D / (4.0 * NoV);
 }
 
@@ -140,17 +129,6 @@ vec3 evalGGXBrdf(BrdfData brdf, MaterialData material, vec3 L) {
   vec3 F = Fresnel(brdf.specularF0, HoV);
   float G2 = Smith_G2_GGX(brdf.alpha, NoV, NoL);
   float D = D_GGX(brdf.alpha, H);
-
-  // // 完全鏡面の場合は個別対応
-  // if (brdf.alpha == 0.0) {
-  //   if (NoH >= 0.99999) {
-  //     G2 = 1.0;
-  //     D = 1000000000;
-  //   } else {
-  //     G2 = 0.0;
-  //     D = 0.0;
-  //   }
-  // }
 
   return F * G2 * D / (4.0 * NoV * NoL);
 }

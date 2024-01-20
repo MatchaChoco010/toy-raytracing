@@ -13,8 +13,6 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
                       vec3 outDirection, out vec3 bsdfWeight,
                       out vec3 emissive) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
-  materialData.metallic = 1.0;
-  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   emissive = materialData.emissive;
@@ -28,10 +26,14 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
   float weightTransparent = 1.0 - materialData.alpha;
 
+  vec3 N = vec3(0.0, 0.0, 1.0);
+  vec3 H = normalize(L + brdfData.V);
+  float NoL = clamp(dot(N, L), 0.00001, 1.0);
+
   if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
     vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData, L);
-    bsdfWeight = weightTransparent * transparentBtdf;
+    bsdfWeight = weightTransparent * transparentBtdf / NoL;
   } else if (dot(outDirection, materialData.shadingNormal) > 0.0) {
     // 反射の場合
     bsdfWeight = vec3(0.0);
@@ -41,8 +43,17 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
     bsdfWeight += weightDiffuse * diffuseBrdf;
 
     // specular
-    vec3 specularBrdf = evalGGXBrdf(brdfData, materialData, L);
-    bsdfWeight += weightSpecular * specularBrdf;
+    if (materialData.roughness == 0.0) {
+      // 完全鏡面反射
+      if (dot(N, H) > 0.9999) {
+        vec3 specularBrdf = vec3(1.0);
+        bsdfWeight += weightSpecular * specularBrdf / NoL;
+      }
+    } else {
+      // GGX反射
+      vec3 specularBrdf = evalGGXBrdf(brdfData, materialData, L);
+      bsdfWeight += weightSpecular * specularBrdf;
+    }
   } else {
     bsdfWeight = vec3(0.0);
   }
@@ -63,8 +74,6 @@ vec3 evalStandardBsdfTransparent(Prd prd, Material material,
 float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
                       vec3 outDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
-  materialData.metallic = 1.0;
-  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
@@ -84,14 +93,16 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
   if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
     // 反射の場合
     if (materialData.roughness == 0.0) {
-      specularPdf = 0.0;
+      // 完全鏡面反射
+      specularPdf = 1.0;
     } else {
+      // GGX反射
       specularPdf = evalGGXPdf(brdfData, materialData, L);
     }
     diffusePdf = evalLambertPdf(brdfData, materialData, L);
   } else if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
-    transparentPdf = 0.0;
+    transparentPdf = 1.0;
   }
 
   return getPdfDistribute1D(func, 0) * specularPdf +
@@ -108,8 +119,6 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
                         out float cosTheta, out vec3 bsdf, out float pdf,
                         out vec3 emissive, out bool isSamplePerfectSpecular) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
-  materialData.metallic = 1.0;
-  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   emissive = materialData.emissive;
@@ -120,7 +129,6 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
   if (NoV == 0.0) {
     return false;
   }
-
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
@@ -137,9 +145,10 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     // specular
     vec3 L;
     if (materialData.roughness == 0.0) {
+      // 完全鏡面反射
       L = inverse(brdfData.tbn) *
           reflect(-viewDirection, materialData.shadingNormal);
-      pdf = 0.0;
+      pdf = 1.0;
       pdf *= pdfBsdfSelect;
 
       bsdf = weightSpecular * vec3(1.0);
@@ -148,6 +157,7 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
       outDirection = normalize(brdfData.tbn * L);
       cosTheta = 0.0;
     } else {
+      // GGX反射
       vec2 uu = vec2(u[1], u[2]);
       L = sampleGGXDirection(uu, brdfData);
       pdf = evalGGXPdf(brdfData, materialData, L);
@@ -181,11 +191,10 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
       return false;
     }
   } break;
-  case 2:
+  case 2: {
     // transparent
-    vec2 uu = vec2(u[1], u[2]);
     vec3 L = -brdfData.V;
-    pdf = 0.0;
+    pdf = 1.0;
     pdf *= pdfBsdfSelect;
 
     bsdf = weightTransparent * evalTransparentBtdf(brdfData, materialData, L);
@@ -193,8 +202,7 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
 
     outDirection = normalize(brdfData.tbn * L);
     cosTheta = 0.0;
-
-    break;
+  } break;
   }
 
   if (luminance(bsdf) == 0.0 || isnan(luminance(bsdf))) {

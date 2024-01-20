@@ -335,8 +335,7 @@ pub(crate) fn load_scene(
         .as_rgb32f()
         .expect("Failed to load sky texture, only RGB32F is supported")
         .enumerate_pixels()
-        // .flat_map(|(_x, _y, p)| p.0)
-        .flat_map(|(_x, _y, p)| [0.9, 0.9, 0.9])
+        .flat_map(|(_x, _y, p)| p.0)
         .collect::<Vec<_>>();
 
     let sky_texture_buffer = ashtray::utils::create_device_local_buffer_with_data(
@@ -363,12 +362,13 @@ pub(crate) fn load_scene(
                 * 2.0
                 * std::f64::consts::PI;
             let index = y * (sky_texture_width as usize) + x;
-            sky_cdf_row_sum_data[y][x + 1] = sky_cdf_row_sum_data[y][x] + 0.9 * weight;
-            // + luminance(glam::vec3(
-            //     sky_data[index * 3],
-            //     sky_data[index * 3 + 1],
-            //     sky_data[index * 3 + 2],
-            // ));
+            sky_cdf_row_sum_data[y][x + 1] = sky_cdf_row_sum_data[y][x]
+                + weight
+                    * luminance(glam::vec3(
+                        sky_data[index * 3],
+                        sky_data[index * 3 + 1],
+                        sky_data[index * 3 + 2],
+                    ));
         }
     }
     luminance(glam::vec3(sky_data[0], sky_data[1], sky_data[2]));
@@ -398,13 +398,6 @@ pub(crate) fn load_scene(
         vec![vec![0.0f64; sky_texture_width as usize]; sky_texture_height as usize];
     for y in 0..sky_texture_height as usize {
         for x in 0..sky_texture_width as usize {
-            let index = y * (sky_texture_width as usize) + x;
-            // sky_pdf_row_data[y][x] = luminance(glam::vec3(
-            //     sky_data[index * 3],
-            //     sky_data[index * 3 + 1],
-            //     sky_data[index * 3 + 2],
-            // )) / sky_cdf_row_sum_data[y][sky_texture_width as usize]
-            //     * sky_texture_width as f64;
             sky_pdf_row_data[y][x] = sky_cdf_row_data[y][x + 1] - sky_cdf_row_data[y][x];
         }
     }
