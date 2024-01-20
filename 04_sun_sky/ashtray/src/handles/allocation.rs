@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use ash::vk;
+use std::ops::DerefMut;
 use std::{
     fmt::Debug,
     ops::Deref,
@@ -77,6 +78,10 @@ impl AllocationHandle {
     fn data(&self) -> &AllocationHandleData {
         unsafe { self.ptr.as_ref() }
     }
+
+    fn data_mut(&mut self) -> &mut AllocationHandleData {
+        unsafe { self.ptr.as_mut() }
+    }
 }
 
 // Debugトレイトの実装
@@ -91,11 +96,16 @@ unsafe impl Send for AllocationHandle {}
 // AllocationHandleDataの中身はSendかつSyncなのでAllocationHandleはSync
 unsafe impl Sync for AllocationHandle {}
 
-// AllocationHandleはvk::ImageViewにDerefする
+// AllocationHandleはAllocationにDerefする
 impl Deref for AllocationHandle {
     type Target = gpu_allocator::vulkan::Allocation;
     fn deref(&self) -> &Self::Target {
         &self.data().allocation
+    }
+}
+impl DerefMut for AllocationHandle {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data_mut().allocation
     }
 }
 

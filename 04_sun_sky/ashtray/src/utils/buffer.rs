@@ -49,7 +49,7 @@ pub fn create_host_buffer(
 }
 
 /// HostのBufferを作成し、データをコピーする関数
-pub fn create_host_buffer_with_data<T>(
+pub fn create_host_buffer_with_data<T: Copy>(
     device: &crate::DeviceHandle,
     allocator: &crate::AllocatorHandle,
     data: &[T],
@@ -64,7 +64,7 @@ pub fn create_host_buffer_with_data<T>(
 
     // bufferのメモリ確保
     let buffer_memory_requirement = buffer.get_buffer_memory_requirements();
-    let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+    let mut allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
         name: "host buffer",
         requirements: buffer_memory_requirement,
         location: gpu_allocator::MemoryLocation::CpuToGpu,
@@ -76,14 +76,15 @@ pub fn create_host_buffer_with_data<T>(
     buffer.bind_buffer_memory(allocation.memory(), allocation.offset());
 
     // データのコピー
-    let ptr = allocation.mapped_ptr().unwrap().as_ptr();
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            data.as_ptr() as *const u8,
-            ptr as *mut u8,
-            buffer_size as usize,
-        )
-    };
+    presser::copy_from_slice_to_offset_with_align(data, &mut *allocation, 0, 4).unwrap();
+    // let ptr = allocation.mapped_ptr().unwrap().as_ptr();
+    // unsafe {
+    //     std::ptr::copy_nonoverlapping(
+    //         data.as_ptr() as *const u8,
+    //         ptr as *mut u8,
+    //         buffer_size as usize,
+    //     )
+    // };
 
     // device addressの取得
     let device_address =
@@ -133,7 +134,7 @@ pub fn create_device_local_buffer(
 }
 
 /// DeviceLocalのBufferを作成し、データをコピーする関数
-pub fn create_device_local_buffer_with_data<T>(
+pub fn create_device_local_buffer_with_data<T: Copy>(
     device: &crate::DeviceHandle,
     queue_handles: &QueueHandles,
     transfer_command_pool: &crate::CommandPoolHandle,
@@ -180,7 +181,12 @@ pub fn create_device_local_buffer_with_data<T>(
     command_buffer.cmd_copy_buffer(
         &staging_buffer.buffer,
         &buffer,
-        std::slice::from_ref(&vk::BufferCopy::builder().size(buffer_size)),
+        std::slice::from_ref(
+            &vk::BufferCopy::builder()
+                .size(buffer_size)
+                .src_offset(0)
+                .dst_offset(0),
+        ),
     );
     command_buffer.end_command_buffer();
     device.queue_submit(
@@ -194,6 +200,7 @@ pub fn create_device_local_buffer_with_data<T>(
         Some(fence.clone()),
     );
     device.wait_fences(&[fence], u64::MAX);
+    device.wait_idle();
 
     BufferObjects {
         buffer,

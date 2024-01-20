@@ -14,9 +14,8 @@ float getSkyPdf(vec3 direction) {
   while (phi >= 2.0 * PI) {
     phi -= 2.0 * PI;
   }
-  uint x = clamp(uint(phi / (2.0 * PI) * pushConstants.skyWidth) %
-                     (pushConstants.skyWidth - 1),
-                 0, (pushConstants.skyWidth) - 1);
+  uint x = clamp(uint(phi / (2.0 * PI) * pushConstants.skyWidth), 0,
+                 (pushConstants.skyWidth) - 1);
   uint y = clamp(uint(theta / PI * pushConstants.skyHeight), 0,
                  (pushConstants.skyHeight) - 1);
 
@@ -27,9 +26,11 @@ float getSkyPdf(vec3 direction) {
   float pdfY = pdfColumn.p[y];
   float pdfX = pdfRow.p[y * pushConstants.skyWidth + x];
 
-  // float pdf = pdfX * pdfY;
-  float pdf = 1.0;
-  // Jacobian for theta and phi -> direction
+  float pdfPhi = pdfX * pushConstants.skyWidth;
+  float pdfTheta = pdfY * pushConstants.skyHeight;
+
+  float pdf = pdfPhi * pdfTheta;
+  // // Jacobian for uv -> direction
   pdf /= 2.0 * PI * PI * sin(theta) + 0.00001;
 
   return pdf;
@@ -68,7 +69,6 @@ vec3 getSkyColor(vec3 direction) {
          (color1 * (1.0 - weightX) * (1.0 - weightY) +
           color2 * weightX * (1.0 - weightY) +
           color3 * (1.0 - weightX) * weightY + color4 * weightX * weightY);
-  // return pushConstants.skyStrength * vec3(0.9);
 }
 
 // skyのテクスチャからdirectionの方向の放射輝度を取得する。
@@ -91,7 +91,6 @@ vec3 getSkyStrength(vec3 direction) {
   SkyBuffer skyBuffer = SkyBuffer(pushConstants.skyBufferAddress);
   return pushConstants.skyStrength *
          skyBuffer.pixel[y * pushConstants.skyWidth + x];
-  // return pushConstants.skyStrength * vec3(0.9);
 }
 
 void sampleSky(float[2] u, out vec3 direction, out float pdf,
@@ -129,7 +128,7 @@ void sampleSky(float[2] u, out vec3 direction, out float pdf,
     while (len > 0) {
       uint h = len >> 1;
       uint middle = first + h;
-      if (cdfRow.value[y * pushConstants.skyWidth + middle] <= u[1]) {
+      if (cdfRow.value[y * (pushConstants.skyWidth + 1) + middle] <= u[1]) {
         first = middle + 1;
         len = len - h - 1;
       } else {
@@ -140,11 +139,10 @@ void sampleSky(float[2] u, out vec3 direction, out float pdf,
     pdfX = pdfRow.p[y * pushConstants.skyWidth + x];
   }
 
-  float theta = (float(y) + 0.5) / pushConstants.skyHeight * PI;
-  float phi = (float(x) + 0.5) / pushConstants.skyWidth * 2.0 * PI -
+  // float theta = acos(1 - 2 * (float(y)) / pushConstants.skyHeight);
+  float theta = float(y) / pushConstants.skyHeight * PI;
+  float phi = (float(x) / (pushConstants.skyWidth - 1)) * 2.0 * PI -
               pushConstants.skyRotation;
-  // float theta = (u[0]) * PI;
-  // float phi = (u[1]) * 2.0 * PI - pushConstants.skyRotation;
   while (phi < 0.0) {
     phi += 2.0 * PI;
   }
@@ -153,15 +151,16 @@ void sampleSky(float[2] u, out vec3 direction, out float pdf,
   }
   direction = vec3(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
 
-  // pdf = pdfX * pdfY;
-  pdf = 1.0;
-  // Jacobian for u[2] -> direction
+  float pdfPhi = pdfX * pushConstants.skyWidth;
+  float pdfTheta = pdfY * pushConstants.skyHeight;
+
+  pdf = pdfPhi * pdfTheta;
+  // // Jacobian for uv -> direction
   pdf /= 2.0 * PI * PI * sin(theta) + 0.00001;
 
   SkyBuffer skyBuffer = SkyBuffer(pushConstants.skyBufferAddress);
   radiance = pushConstants.skyStrength *
              skyBuffer.pixel[y * pushConstants.skyWidth + x];
-  // radiance = pushConstants.skyStrength * vec3(0.9);
 }
 
 #endif

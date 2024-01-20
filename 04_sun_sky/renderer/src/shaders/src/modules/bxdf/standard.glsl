@@ -13,33 +13,36 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
                       vec3 outDirection, out vec3 bsdfWeight,
                       out vec3 emissive) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
+  materialData.metallic = 1.0;
+  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   emissive = materialData.emissive;
 
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
 
-  vec3 H = normalize(L + brdfData.V);
-  float HoL = clamp(dot(H, L), 0.0, 1.0);
-  float kD = 1.0 - luminance(Fresnel(brdfData.specularF0, HoL));
-  kD *= 1.0 - materialData.metallic;
-  kD = clamp(kD, 0.0, 1.0);
+  float weightSpecular = 1.0;
+  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
+  float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
+  weightDiffuse *= 1.0 - materialData.metallic;
+  weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
+  float weightTransparent = 1.0 - materialData.alpha;
 
   if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
     vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData, L);
-    bsdfWeight = (1.0 - materialData.alpha) * transparentBtdf;
+    bsdfWeight = weightTransparent * transparentBtdf;
   } else if (dot(outDirection, materialData.shadingNormal) > 0.0) {
     // 反射の場合
     bsdfWeight = vec3(0.0);
 
     // diffuse
     vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData, L);
-    bsdfWeight += kD * diffuseBrdf;
+    bsdfWeight += weightDiffuse * diffuseBrdf;
 
     // specular
     vec3 specularBrdf = evalGGXBrdf(brdfData, materialData, L);
-    bsdfWeight += 1.0 * specularBrdf;
+    bsdfWeight += weightSpecular * specularBrdf;
   } else {
     bsdfWeight = vec3(0.0);
   }
@@ -57,17 +60,18 @@ vec3 evalStandardBsdfTransparent(Prd prd, Material material,
 }
 
 // viewDirectionとoutDirectionを与えたときのBSDFのpdfを計算する。
-// One Sample ModelのMIS
-// weightとpdfを組み合わせて新しいpdfを計算している形となっている。
 float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
                       vec3 outDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
+  materialData.metallic = 1.0;
+  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
+  vec3 N = vec3(0.0, 0.0, 1.0);
 
   float weightSpecular = 1.0;
-  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
+  float NoV = clamp(dot(N, brdfData.V), 0.0, 1.0);
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
@@ -79,11 +83,15 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
   float transparentPdf = 0.0;
   if (dot(outDirection, prd.hitGeometryNormal) > 0.0) {
     // 反射の場合
-    specularPdf = evalGGXPdf(brdfData, materialData, L);
+    if (materialData.roughness == 0.0) {
+      specularPdf = 0.0;
+    } else {
+      specularPdf = evalGGXPdf(brdfData, materialData, L);
+    }
     diffusePdf = evalLambertPdf(brdfData, materialData, L);
   } else if (dot(-viewDirection, outDirection) > 0.9999) {
     // 透過の場合
-    transparentPdf = evalTransparentPdf(brdfData, materialData, L);
+    transparentPdf = 0.0;
   }
 
   return getPdfDistribute1D(func, 0) * specularPdf +
@@ -98,8 +106,10 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
 bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
                         vec3 viewDirection, out vec3 outDirection,
                         out float cosTheta, out vec3 bsdf, out float pdf,
-                        out vec3 emissive) {
+                        out vec3 emissive, out bool isSamplePerfectSpecular) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
+  materialData.metallic = 1.0;
+  materialData.roughness = 0.01;
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   emissive = materialData.emissive;
@@ -125,16 +135,30 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
   switch (bsdfType) {
   case 0: {
     // specular
-    vec2 uu = vec2(u[1], u[2]);
-    vec3 L = sampleGGXDirection(uu, brdfData);
-    pdf = evalGGXPdf(brdfData, materialData, L);
-    pdf *= pdfBsdfSelect;
+    vec3 L;
+    if (materialData.roughness == 0.0) {
+      L = inverse(brdfData.tbn) *
+          reflect(-viewDirection, materialData.shadingNormal);
+      pdf = 0.0;
+      pdf *= pdfBsdfSelect;
 
-    bsdf = weightSpecular * evalGGXBrdf(brdfData, materialData, L);
+      bsdf = weightSpecular * vec3(1.0);
+      isSamplePerfectSpecular = true;
 
-    outDirection = normalize(brdfData.tbn * L);
+      outDirection = normalize(brdfData.tbn * L);
+      cosTheta = 0.0;
+    } else {
+      vec2 uu = vec2(u[1], u[2]);
+      L = sampleGGXDirection(uu, brdfData);
+      pdf = evalGGXPdf(brdfData, materialData, L);
+      pdf *= pdfBsdfSelect;
 
-    cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
+      bsdf = weightSpecular * evalGGXBrdf(brdfData, materialData, L);
+      isSamplePerfectSpecular = false;
+
+      outDirection = normalize(brdfData.tbn * L);
+      cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
+    }
 
     if (dot(outDirection, materialData.geometryNormal) < 0.0) {
       return false;
@@ -148,10 +172,9 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
     pdf *= pdfBsdfSelect;
 
     bsdf = weightDiffuse * evalLambertBrdf(brdfData, materialData, L);
+    isSamplePerfectSpecular = false;
 
     outDirection = normalize(brdfData.tbn * L);
-
-    // cosTheta = abs(dot(outDirection, materialData.shadingNormal));
     cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
 
     if (dot(outDirection, materialData.geometryNormal) < 0.0) {
@@ -161,15 +184,16 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
   case 2:
     // transparent
     vec2 uu = vec2(u[1], u[2]);
-    vec3 L = sampleTransparentDirection(uu, brdfData);
-    pdf = evalTransparentPdf(brdfData, materialData, L);
+    vec3 L = -brdfData.V;
+    pdf = 0.0;
     pdf *= pdfBsdfSelect;
 
     bsdf = weightTransparent * evalTransparentBtdf(brdfData, materialData, L);
+    isSamplePerfectSpecular = true;
 
     outDirection = normalize(brdfData.tbn * L);
+    cosTheta = 0.0;
 
-    cosTheta = 1.0;
     break;
   }
 

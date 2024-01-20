@@ -15,7 +15,7 @@ pub struct BlasObjects {
 }
 
 /// Blasを作成するヘルパー関数
-pub fn cerate_blas<T>(
+pub fn cerate_blas<T: Copy>(
     device: &crate::DeviceHandle,
     queue_handles: &QueueHandles,
     compute_command_pool: &crate::CommandPoolHandle,
@@ -195,7 +195,7 @@ pub struct TlasObjects {
 }
 
 /// Tlasを作成するヘルパー関数
-pub fn create_tlas<Material>(
+pub fn create_tlas<Material: Copy>(
     device: &crate::DeviceHandle,
     queue_handles: &QueueHandles,
     compute_command_pool: &crate::CommandPoolHandle,
@@ -205,7 +205,7 @@ pub fn create_tlas<Material>(
     materials: &[Material],
 ) -> TlasObjects {
     #[repr(C)]
-    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    #[derive(Clone, Copy)]
     struct InstanceParam {
         pub address_index: u64,
         pub address_vertex: u64,

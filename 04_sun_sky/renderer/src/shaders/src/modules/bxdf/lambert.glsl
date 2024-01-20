@@ -8,7 +8,7 @@
 vec3 sampleLambertDirection(vec2 uu, BrdfData brdf) {
   float cosTheta = sqrt(uu.x);
   float sinTheta = sqrt(1.0 - uu.x);
-  float phi = uu.x * 2 * PI;
+  float phi = uu.y * 2 * PI;
   vec3 N = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
   return normalize(N);
 }

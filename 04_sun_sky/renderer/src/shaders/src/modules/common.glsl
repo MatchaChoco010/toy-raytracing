@@ -61,13 +61,16 @@ layout(set = 4, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
 // buffer reference
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Vertices {
+layout(buffer_reference, buffer_reference_align = 4,
+       scalar) buffer readonly Vertices {
   Vertex v[];
 };
-layout(buffer_reference, scalar) buffer Indices { uvec3 i[]; };
-layout(buffer_reference, scalar) buffer SkyBuffer { vec3 pixel[]; };
-layout(buffer_reference, scalar) buffer SkyCdfBuffer { float value[]; };
-layout(buffer_reference, scalar) buffer SkyPdfBuffer { float p[]; };
+layout(buffer_reference, scalar) buffer readonly Indices { uvec3 i[]; };
+layout(buffer_reference, scalar) buffer readonly SkyBuffer { vec3 pixel[]; };
+layout(buffer_reference, scalar) buffer readonly SkyCdfBuffer {
+  float value[];
+};
+layout(buffer_reference, scalar) buffer readonly SkyPdfBuffer { float p[]; };
 
 // utilities
 
