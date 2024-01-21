@@ -24,7 +24,8 @@ vec3 evalStandardBsdfNEE(Prd prd, Material material, vec3 viewDirection,
   weightDiffuse *= materialData.alpha;
   float weightTransparent = 1.0 - materialData.alpha;
 
-  // NEEではperfect specular面はサンプリングしないので透過と完全鏡面は無視する
+  // NEEではperfect
+  // specular面はNEEでサンプリングしないので透過と完全鏡面は無視する
   if (dot(outDirection, materialData.shadingNormal) > 0.0) {
     // 反射の場合
     vec3 bsdf = vec3(0.0);
@@ -122,13 +123,14 @@ sampleStandardBsdf(float[3] u, Prd prd, Material material, vec3 viewDirection) {
 
   result.emissive = materialData.emissive;
 
-  float weightSpecular = 1.0;
-  weightSpecular *= materialData.alpha;
-  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
-  if (NoV == 0.0) {
+  if (brdfData.V.z == 0.0) {
     result.traceNext = false;
     return result;
   }
+
+  float weightSpecular = 1.0;
+  weightSpecular *= materialData.alpha;
+  float NoV = clamp(brdfData.V.z, 0.0, 1.0);
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
