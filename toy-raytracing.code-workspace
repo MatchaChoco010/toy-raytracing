@@ -60,7 +60,8 @@
 			"tobj",
 			"UNORM",
 			"vulkan",
-			"winit"
+			"winit",
+			"Zeroable"
 		]
 	}
 }
