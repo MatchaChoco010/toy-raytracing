@@ -86,39 +86,38 @@ MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
 
   vec3 geometryNormal;
   vec3 shadingNormal;
-  // if (material.normalTextureIndex == -1) {
-  geometryNormal = normalize(prd.hitGeometryNormal);
-  shadingNormal = normalize(prd.hitShadingNormal);
-  if (dot(geometryNormal, viewDirection) < 0.0) {
-    geometryNormal = -geometryNormal;
-  }
-  if (dot(shadingNormal, geometryNormal) < 0.0) {
-    shadingNormal = -shadingNormal;
-  }
-  // } else {
-  //   geometryNormal = normalize(prd.hitGeometryNormal);
-  //   shadingNormal = normalize(prd.hitShadingNormal);
-  //   vec3 tangent = normalize(prd.hitTangent);
-  //   if (dot(geometryNormal, viewDirection) < 0.0) {
-  //     geometryNormal = -geometryNormal;
-  //   }
-  //   if (dot(shadingNormal, geometryNormal) < 0.0) {
-  //     shadingNormal = -shadingNormal;
-  //     tangent = -tangent;
-  //   }
-  //   vec3 bitangent = cross(shadingNormal, tangent);
-  //   tangent = cross(bitangent, shadingNormal);
-  //   mat3 tbn = mat3(tangent, bitangent, shadingNormal);
+  if (material.normalTextureIndex == -1) {
+    geometryNormal = normalize(prd.hitGeometryNormal);
+    shadingNormal = normalize(prd.hitShadingNormal);
+    if (dot(geometryNormal, viewDirection) < 0.0) {
+      geometryNormal = -geometryNormal;
+    }
+    if (dot(shadingNormal, geometryNormal) < 0.0) {
+      shadingNormal = -shadingNormal;
+    }
+  } else {
+    geometryNormal = normalize(prd.hitGeometryNormal);
+    shadingNormal = normalize(prd.hitShadingNormal);
+    vec3 tangent = normalize(prd.hitTangent);
+    if (dot(geometryNormal, viewDirection) < 0.0) {
+      geometryNormal = -geometryNormal;
+    }
+    if (dot(shadingNormal, geometryNormal) < 0.0) {
+      shadingNormal = -shadingNormal;
+      tangent = -tangent;
+    }
+    vec3 bitangent = cross(shadingNormal, tangent);
+    tangent = cross(bitangent, shadingNormal);
+    mat3 tbn = mat3(tangent, bitangent, shadingNormal);
 
-  //   vec3 normalFromTexture =
-  //       texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb;
-  //   normalFromTexture = normalize(normalFromTexture * 2.0 - 1.0);
-  //   normalFromTexture = normalize(tbn * normalFromTexture);
+    vec3 normalFromTexture =
+        texture(images[material.normalTextureIndex], prd.hitTexCoord).rgb;
+    normalFromTexture = normalize(normalFromTexture * 2.0 - 1.0);
+    normalFromTexture = normalize(tbn * normalFromTexture);
 
-  //   shadingNormal =
-  //       normalize(mix(shadingNormal, normalFromTexture,
-  //       material.normalFactor));
-  // }
+    shadingNormal =
+        normalize(mix(shadingNormal, normalFromTexture, material.normalFactor));
+  }
 
   MaterialData data;
   data.baseColor = baseColor;

@@ -243,7 +243,7 @@ pub(crate) fn load_scene(
                     -1
                 };
 
-                let emissive_factor = material.emissive.factor * 1000.0;
+                let emissive_factor = material.emissive.factor * 100000.0;
                 let emissive_texture_index = if let Some(texture) = &material.emissive.texture {
                     let data = texture
                         .enumerate_pixels()

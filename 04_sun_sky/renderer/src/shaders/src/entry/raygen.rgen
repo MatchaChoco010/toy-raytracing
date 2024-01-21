@@ -30,19 +30,29 @@ vec2 getCameraDelta() {
   return delta;
 }
 
+// SetCameraRayの返り値
+struct SetCameraRayResult {
+  vec3 origin;
+  vec3 direction;
+};
+
 // カメラのレイの原点と方向を計算する
-void setCameraRay(out vec3 origin, out vec3 direction) {
-  ;
+SetCameraRayResult setCameraRay() {
+  SetCameraRayResult result;
+
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
   vec2 delta = getCameraDelta();
   vec2 inUV = (pixelCenter + delta) / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
   d.x *= float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
 
-  origin = pushConstants.cameraTranslate;
-  direction =
+  result.origin = pushConstants.cameraTranslate;
+
+  vec3 direction =
       normalize(vec3(d.x, d.y, -1.0 / atan(pushConstants.cameraFov / 2.0)));
-  direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
+  result.direction = (pushConstants.cameraRotate * vec4(direction, 0.0)).xyz;
+
+  return result;
 }
 
 // MISの重みをパワーヒューリスティックスで計算する
@@ -57,9 +67,7 @@ float misWeightPowerHeuristic(float mainPdf, float[3] otherPdfs) {
 void main() {
   init_random(0);
 
-  vec3 origin;
-  vec3 direction;
-  setCameraRay(origin, direction);
+  SetCameraRayResult cam = setCameraRay();
 
   float tmin = 0.001;
   float tmax = 100000.0;
@@ -67,6 +75,8 @@ void main() {
   prd.depth = 0;
   vec3 radiance = vec3(0.0);
   vec3 throughput = vec3(1.0);
+  vec3 origin = cam.origin;
+  vec3 direction = cam.direction;
 
   while (true) {
     prd.miss = 0;
@@ -89,9 +99,10 @@ void main() {
       if (pushConstants.skyEnabled == 1) {
         radiance += throughput * getSkyColor(direction);
       }
+      break;
     }
 
-    if (prd.miss == 1 || prd.depth > pushConstants.maxRecursionDepth) {
+    if (prd.depth > pushConstants.maxRecursionDepth) {
       break;
     }
 
@@ -110,7 +121,7 @@ void main() {
     }
 
     if (pushConstants.sunEnabled == 1) {
-      // sun
+      // sun NEE
       vec3 sunStrength = getSunStrength();
       float[2] u2 = SAMPLE_RANDOM(2, 2, 3)(prd.depth);
       vec3 sunDirection = sampleSunDirection(u2);
@@ -127,23 +138,21 @@ void main() {
       if (shadowPrd.shadow == 0 && isSunDirection(sunDirection)) {
         float sunPdf = getSunPdf(sunDirection);
         float skyPdf = getSkyPdf(sunDirection);
-        vec3 bsdfWeight;
-        vec3 emissive;
-        evalStandardBsdf(prd, material, viewDirection, sunDirection, bsdfWeight,
-                         emissive);
+        vec3 bsdf =
+            evalStandardBsdfNEE(prd, material, viewDirection, sunDirection);
         float bsdfPdf =
             evalStandardPdf(prd, material, viewDirection, sunDirection);
         float misWeight =
             misWeightPowerHeuristic(sunPdf, float[](sunPdf, 1.0, bsdfPdf));
         float cosTheta =
             max(dot(sunDirection, materialData.shadingNormal), 0.0);
-        radiance += sunStrength * throughput * shadowPrd.transparent *
-                    bsdfWeight * cosTheta * misWeight / sunPdf;
+        radiance += sunStrength * throughput * shadowPrd.transparent * bsdf *
+                    cosTheta * misWeight / sunPdf;
       }
     }
 
     if (pushConstants.skyEnabled == 1) {
-      // sky
+      // sky NEE
       float[2] u2 = SAMPLE_RANDOM(2, 2, 3)(prd.depth);
       vec3 skyDirection;
       float skyPdf;
@@ -159,59 +168,45 @@ void main() {
                   origin, tmin, skyDirection, tmax,
                   1 // payload location
       );
-      vec3 bsdfWeight;
-      vec3 emissive;
-      evalStandardBsdf(prd, material, viewDirection, skyDirection, bsdfWeight,
-                       emissive);
-      float bsdfPdf =
-          evalStandardPdf(prd, material, viewDirection, skyDirection);
-      if (shadowPrd.shadow == 0 && skyPdf != 0.0 && bsdfPdf != 0.0) {
+      if (shadowPrd.shadow == 0 && skyPdf != 0.0) {
         float sunPdf = getSunPdf(skyDirection);
+        vec3 bsdf =
+            evalStandardBsdfNEE(prd, material, viewDirection, skyDirection);
+        float bsdfPdf =
+            evalStandardPdf(prd, material, viewDirection, skyDirection);
         float misWeight =
             misWeightPowerHeuristic(skyPdf, float[](sunPdf, skyPdf, bsdfPdf));
         float cosTheta =
             max(dot(skyDirection, materialData.shadingNormal), 0.0);
-        radiance += skyStrength * throughput * shadowPrd.transparent *
-                    bsdfWeight * cosTheta * misWeight / skyPdf;
+        radiance += skyStrength * throughput * shadowPrd.transparent * bsdf *
+                    cosTheta * misWeight / skyPdf;
       }
     }
 
     float[3] uu = SAMPLE_RANDOM(3, 3, 4)(prd.depth);
-    vec3 dir;
-    float cosTheta;
-    vec3 bsdf;
-    float bsdfPdf;
-    vec3 emissive;
-    bool isSamplePerfectSpecular;
-    bool traceNext =
-        sampleStandardBsdf(uu, prd, material, viewDirection, dir, cosTheta,
-                           bsdf, bsdfPdf, emissive, isSamplePerfectSpecular);
+    SampleStandardBsdfResult result =
+        sampleStandardBsdf(uu, prd, material, viewDirection);
 
-    radiance += throughput * emissive;
+    radiance += throughput * result.emissive;
 
-    if (!traceNext) {
+    if (!result.traceNext) {
       break;
     }
 
-    if (isSamplePerfectSpecular) {
-      direction = dir;
-      throughput *= bsdf / bsdfPdf;
-    } else {
-      float sunPdf = 0.0;
-      float skyPdf = 0.0;
-      if (pushConstants.sunEnabled == 1) {
-        sunPdf = getSunPdf(dir);
-      }
-      if (pushConstants.skyEnabled == 1) {
-        skyPdf = getSkyPdf(dir);
-      }
-
-      float misWeight =
-          misWeightPowerHeuristic(bsdfPdf, float[](sunPdf, skyPdf, bsdfPdf));
-
-      direction = dir;
-      throughput *= bsdf * cosTheta * misWeight / bsdfPdf;
+    float sunPdf = 0.0;
+    float skyPdf = 0.0;
+    if (pushConstants.sunEnabled == 1) {
+      sunPdf = getSunPdf(result.outDirection);
     }
+    if (pushConstants.skyEnabled == 1) {
+      skyPdf = getSkyPdf(result.outDirection);
+    }
+
+    float misWeight = misWeightPowerHeuristic(
+        result.pdf, float[](sunPdf, skyPdf, result.pdf));
+
+    direction = result.outDirection;
+    throughput *= result.bsdf * result.cosTheta * misWeight / result.pdf;
   }
 
   vec3 rgb = radiance;

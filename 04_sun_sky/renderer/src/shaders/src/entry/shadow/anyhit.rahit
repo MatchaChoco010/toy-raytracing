@@ -60,7 +60,7 @@ void main() {
   vec3 rayDirection = gl_ObjectRayDirectionEXT;
 
   vec3 viewDirection = -rayDirection;
-  vec3 btdf = evalStandardBsdfTransparent(prd, material, viewDirection);
+  vec3 btdf = evalStandardBsdfTransparentAnyHit(prd, material, viewDirection);
   if (luminance(shadowPrd.transparent * btdf) < 0.0001) {
     shadowPrd.shadow = 1;
   } else {

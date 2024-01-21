@@ -1,6 +1,5 @@
 #ifndef _BXDF_STANDARD_GLSL_
 #define _BXDF_STANDARD_GLSL_
-#extension GL_EXT_debug_printf : enable
 
 #include "../common.glsl"
 #include "../distribute_1d.glsl"
@@ -8,14 +7,11 @@
 #include "lambert.glsl"
 #include "transparent.glsl"
 
-// viewDirectionとoutDirectionを与えたときのBSDFの減衰と発光を計算する
-void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
-                      vec3 outDirection, out vec3 bsdfWeight,
-                      out vec3 emissive) {
+// NEEで利用するためにviewDirectionとoutDirectionを与えたときのBSDFの減衰を計算する
+vec3 evalStandardBsdfNEE(Prd prd, Material material, vec3 viewDirection,
+                         vec3 outDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
-
-  emissive = materialData.emissive;
 
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
 
@@ -26,42 +22,32 @@ void evalStandardBsdf(Prd prd, Material material, vec3 viewDirection,
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
   float weightTransparent = 1.0 - materialData.alpha;
 
-  vec3 N = vec3(0.0, 0.0, 1.0);
-  vec3 H = normalize(L + brdfData.V);
-  float NoL = clamp(dot(N, L), 0.00001, 1.0);
-
-  if (dot(-viewDirection, outDirection) > 0.9999) {
-    // 透過の場合
-    vec3 transparentBtdf = evalTransparentBtdf(brdfData, materialData, L);
-    bsdfWeight = weightTransparent * transparentBtdf / NoL;
-  } else if (dot(outDirection, materialData.shadingNormal) > 0.0) {
+  // NEEではperfect specular面はサンプリングしないので透過と完全鏡面は無視する
+  if (dot(outDirection, materialData.shadingNormal) > 0.0) {
     // 反射の場合
-    bsdfWeight = vec3(0.0);
+    vec3 bsdf = vec3(0.0);
 
     // diffuse
     vec3 diffuseBrdf = evalLambertBrdf(brdfData, materialData, L);
-    bsdfWeight += weightDiffuse * diffuseBrdf;
+    bsdf += weightDiffuse * diffuseBrdf;
 
     // specular
-    if (materialData.roughness == 0.0) {
-      // 完全鏡面反射
-      if (dot(N, H) > 0.9999) {
-        vec3 specularBrdf = vec3(1.0);
-        bsdfWeight += weightSpecular * specularBrdf / NoL;
-      }
-    } else {
+    if (materialData.roughness != 0.0) {
       // GGX反射
       vec3 specularBrdf = evalGGXBrdf(brdfData, materialData, L);
-      bsdfWeight += weightSpecular * specularBrdf;
+      bsdf += weightSpecular * specularBrdf;
     }
+
+    return bsdf;
   } else {
-    bsdfWeight = vec3(0.0);
+    return vec3(0.0);
   }
 }
 
-// 透過したときのときのBSDFの減衰を計算する。
-vec3 evalStandardBsdfTransparent(Prd prd, Material material,
-                                 vec3 viewDirection) {
+// AnyHit
+// shaderでの透過量を決めるために透過したときのときのBSDFの減衰を計算する。
+vec3 evalStandardBsdfTransparentAnyHit(Prd prd, Material material,
+                                       vec3 viewDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
   vec3 L = normalize(inverse(brdfData.tbn) * -viewDirection);
@@ -71,6 +57,7 @@ vec3 evalStandardBsdfTransparent(Prd prd, Material material,
 }
 
 // viewDirectionとoutDirectionを与えたときのBSDFのpdfを計算する。
+// One Sample ModelにMISによるサンプリングとしている。
 float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
                       vec3 outDirection) {
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
@@ -110,24 +97,33 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
          getPdfDistribute1D(func, 2) * transparentPdf;
 }
 
+// sampleStandardBsdfの返り値
+struct SampleStandardBsdfResult {
+  vec3 outDirection;
+  float cosTheta;
+  vec3 bsdf;
+  float pdf;
+  vec3 emissive;
+  bool traceNext;
+};
+
 // viewDirectionを与えたときにoutDirectionをサンプリングして
-// BsDFの減衰と発光を計算し、またそのサンプリングのpdfを計算する。
-// 返り値のboolは次をサンプリングするかどうかを表す。
-// 法線とサンプリング方向が逆の場合や、BSDFの重みが0 or NaNの場合はfalseを返す。
-bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
-                        vec3 viewDirection, out vec3 outDirection,
-                        out float cosTheta, out vec3 bsdf, out float pdf,
-                        out vec3 emissive, out bool isSamplePerfectSpecular) {
+// BSDFの減衰と発光を計算し、またそのサンプリングのpdfを計算する。
+SampleStandardBsdfResult
+sampleStandardBsdf(float[3] u, Prd prd, Material material, vec3 viewDirection) {
+  SampleStandardBsdfResult result;
+
   MaterialData materialData = getMaterialData(prd, material, viewDirection);
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
-  emissive = materialData.emissive;
+  result.emissive = materialData.emissive;
 
   float weightSpecular = 1.0;
 
   float NoV = clamp(brdfData.V.z, 0.0, 1.0);
   if (NoV == 0.0) {
-    return false;
+    result.traceNext = false;
+    return result;
   }
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
@@ -148,68 +144,79 @@ bool sampleStandardBsdf(float[3] u, Prd prd, Material material,
       // 完全鏡面反射
       L = inverse(brdfData.tbn) *
           reflect(-viewDirection, materialData.shadingNormal);
-      pdf = 1.0;
-      pdf *= pdfBsdfSelect;
+      result.outDirection = normalize(brdfData.tbn * L);
 
-      bsdf = weightSpecular * vec3(1.0);
-      isSamplePerfectSpecular = true;
+      result.pdf = 1.0;
+      result.pdf *= pdfBsdfSelect;
 
-      outDirection = normalize(brdfData.tbn * L);
-      cosTheta = 0.0;
+      result.bsdf = weightSpecular * vec3(1.0);
+
+      // perfect specularなのでcos項は無視できるので1.0とする
+      result.cosTheta = 1.0;
     } else {
       // GGX反射
       vec2 uu = vec2(u[1], u[2]);
       L = sampleGGXDirection(uu, brdfData);
-      pdf = evalGGXPdf(brdfData, materialData, L);
-      pdf *= pdfBsdfSelect;
 
-      bsdf = weightSpecular * evalGGXBrdf(brdfData, materialData, L);
-      isSamplePerfectSpecular = false;
+      result.outDirection = normalize(brdfData.tbn * L);
 
-      outDirection = normalize(brdfData.tbn * L);
-      cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
-    }
+      if (dot(result.outDirection, materialData.geometryNormal) < 0.0) {
+        result.traceNext = false;
+        return result;
+      }
 
-    if (dot(outDirection, materialData.geometryNormal) < 0.0) {
-      return false;
+      result.pdf = evalGGXPdf(brdfData, materialData, L);
+      result.pdf *= pdfBsdfSelect;
+
+      result.bsdf = weightSpecular * evalGGXBrdf(brdfData, materialData, L);
+
+      result.cosTheta =
+          max(dot(result.outDirection, materialData.shadingNormal), 0.0);
     }
   } break;
   case 1: {
     // diffuse
     vec2 uu = vec2(u[1], u[2]);
     vec3 L = sampleLambertDirection(uu, brdfData);
-    pdf = evalLambertPdf(brdfData, materialData, L);
-    pdf *= pdfBsdfSelect;
 
-    bsdf = weightDiffuse * evalLambertBrdf(brdfData, materialData, L);
-    isSamplePerfectSpecular = false;
+    result.outDirection = normalize(brdfData.tbn * L);
 
-    outDirection = normalize(brdfData.tbn * L);
-    cosTheta = max(dot(outDirection, materialData.shadingNormal), 0.0);
-
-    if (dot(outDirection, materialData.geometryNormal) < 0.0) {
-      return false;
+    if (dot(result.outDirection, materialData.geometryNormal) < 0.0) {
+      result.traceNext = false;
+      return result;
     }
+
+    result.pdf = evalLambertPdf(brdfData, materialData, L);
+    result.pdf *= pdfBsdfSelect;
+
+    result.bsdf = weightDiffuse * evalLambertBrdf(brdfData, materialData, L);
+
+    result.cosTheta =
+        max(dot(result.outDirection, materialData.shadingNormal), 0.0);
   } break;
   case 2: {
     // transparent
     vec3 L = -brdfData.V;
-    pdf = 1.0;
-    pdf *= pdfBsdfSelect;
+    result.outDirection = normalize(brdfData.tbn * L);
 
-    bsdf = weightTransparent * evalTransparentBtdf(brdfData, materialData, L);
-    isSamplePerfectSpecular = true;
+    result.pdf = 1.0;
+    result.pdf *= pdfBsdfSelect;
 
-    outDirection = normalize(brdfData.tbn * L);
-    cosTheta = 0.0;
+    result.bsdf =
+        weightTransparent * evalTransparentBtdf(brdfData, materialData, L);
+
+    // perfect specularなのでcos項は無視できるので1.0とする
+    result.cosTheta = 1.0;
   } break;
   }
 
-  if (luminance(bsdf) == 0.0 || isnan(luminance(bsdf))) {
-    return false;
+  if (luminance(result.bsdf) == 0.0 || isnan(luminance(result.bsdf))) {
+    result.traceNext = false;
+    return result;
   }
 
-  return true;
+  result.traceNext = true;
+  return result;
 }
 
 #endif
