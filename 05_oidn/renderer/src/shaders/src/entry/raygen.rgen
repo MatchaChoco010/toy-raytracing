@@ -92,7 +92,7 @@ void main() {
     prd.depth++;
 
     // sunとskyを足す
-    if (prd.miss == 1) {
+    if (prd.depth == 1 && prd.miss == 1) {
       if (pushConstants.sunEnabled == 1 && isSunDirection(direction)) {
         radiance += throughput * getSunStrength();
       }
