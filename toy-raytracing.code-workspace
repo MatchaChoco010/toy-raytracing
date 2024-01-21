@@ -4,18 +4,19 @@
 			"path": "."
 		},
 		{
-			"path": "04_sun_sky/ashtray"
+			"path": "05_oidn/ashtray"
 		},
 		{
-			"path": "04_sun_sky/renderer"
+			"path": "05_oidn/renderer"
 		},
 		{
-			"path": "04_sun_sky/viewer"
+			"path": "05_oidn/viewer"
 		}
 	],
 	"settings": {
 		"cSpell.words": [
 			"aabb",
+			"anyhit",
 			"Bindless",
 			"bitangent",
 			"blas",
@@ -25,16 +26,20 @@
 			"BXDF",
 			"bytemuck",
 			"closesthit",
+			"Denoise",
 			"egui",
 			"elwt",
 			"GLSL",
+			"gltf",
 			"ifndef",
 			"isnan",
 			"KHRONOS",
 			"lerp",
 			"mipmap",
 			"nonoverlapping",
+			"oidn",
 			"powf",
+			"rahit",
 			"raygen",
 			"raytracing",
 			"rchit",

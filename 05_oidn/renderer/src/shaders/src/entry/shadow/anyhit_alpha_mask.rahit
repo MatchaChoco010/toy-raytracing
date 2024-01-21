@@ -1,0 +1,50 @@
+#version 460
+#extension GL_GOOGLE_include_directive : enable
+
+#include "../../modules/bxdf/standard.glsl"
+#include "../../modules/common.glsl"
+#include "../../modules/payload.glsl"
+
+layout(location = 1) rayPayloadInEXT ShadowPrd shadowPrd;
+
+hitAttributeEXT vec2 attribs;
+
+// shadow rayで半透明にhitした場合に光を減衰させつつ光を通す。
+// hitした位置のマテリアルを元に透過成分のbsdfを計算して、透過光の減衰を計算している。
+void main() {
+  vec3 barycentricCoords =
+      vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+
+  InstanceParam instanceParam =
+      GetResource(InstanceParams, pushConstants.instanceParamsIndex)
+          .items[gl_InstanceID];
+  Indices indices = Indices(instanceParam.indexBuffer);
+  Vertices vertices = Vertices(instanceParam.vertexBuffer);
+
+  uvec3 index = indices.i[gl_PrimitiveID];
+  Vertex v0 = vertices.v[index.x];
+  Vertex v1 = vertices.v[index.y];
+  Vertex v2 = vertices.v[index.z];
+
+  vec2 texCoord = barycentricCoords.x * v0.texCoord +
+                  barycentricCoords.y * v1.texCoord +
+                  barycentricCoords.z * v2.texCoord;
+
+  Material material = GetResource(Materials, pushConstants.materialsIndex)
+                          .items[instanceParam.materialIndex];
+
+  float alpha;
+  if (material.baseColorTextureIndex == -1) {
+    alpha = material.baseColorFactor.a;
+  } else {
+    vec4 pixel = texture(images[material.baseColorTextureIndex], texCoord);
+    alpha = material.baseColorFactor.a * pixel.a;
+  }
+
+  if (alpha < material.alphaCutoff) {
+    ignoreIntersectionEXT;
+    shadowPrd.shadow = 0;
+  } else {
+    shadowPrd.shadow = 1;
+  }
+}
