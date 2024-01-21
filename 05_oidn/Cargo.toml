@@ -3,6 +3,7 @@ members = [
   "ashtray",
   "renderer",
   "viewer",
+  "glb",
 ]
 resolver = "2"
 

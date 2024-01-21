@@ -753,6 +753,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "glb"
+version = "0.1.0"
+dependencies = [
+ "base64 0.21.7",
+ "glam",
+ "gltf",
+ "image",
+]
+
+[[package]]
 name = "gltf"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1409,10 +1419,9 @@ dependencies = [
  "anyhow",
  "ash",
  "ashtray",
- "base64 0.21.7",
  "bytemuck",
  "glam",
- "gltf",
+ "glb",
  "gpu-allocator",
  "image",
  "pollster",

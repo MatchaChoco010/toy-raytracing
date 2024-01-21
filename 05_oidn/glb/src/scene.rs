@@ -3,8 +3,7 @@ pub mod model;
 use glam::Mat4;
 use gltf::scene::Node;
 
-use crate::glb::utils::transform_to_matrix;
-use crate::glb::GlbData;
+use crate::GlbData;
 
 pub use model::{AlphaMode, Model};
 
@@ -24,7 +23,7 @@ impl Scene {
     }
 
     fn read_node(&mut self, node: &Node, parent_transform: Mat4, data: &mut GlbData) {
-        let transform = parent_transform * transform_to_matrix(node.transform());
+        let transform = parent_transform * Mat4::from_cols_array_2d(&node.transform().matrix());
 
         for child in node.children() {
             self.read_node(&child, transform, data);

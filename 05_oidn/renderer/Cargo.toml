@@ -7,10 +7,9 @@ edition.workspace = true
 anyhow.workspace = true
 ash.workspace = true
 ashtray = { path = "../ashtray" }
-base64 = "0.21.7"
 bytemuck.workspace = true
 glam.workspace = true
-gltf = { version = "1.4.0", features = ["KHR_materials_emissive_strength"] }
+glb = { path = "../glb" }
 gpu-allocator.workspace = true
 image = "0.24.7"
 pollster = "0.3.0"

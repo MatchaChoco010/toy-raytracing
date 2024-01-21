@@ -1,4 +1,4 @@
-use crate::glb::model::Material;
+use crate::model::Material;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use gltf::image::Source;

@@ -72,7 +72,7 @@ pub(crate) fn load_scene(
     let mut instances = vec![];
 
     for glb in &scene.glb_list {
-        let glb_scenes = crate::glb::load(&glb.path).expect("Failed to load glb file");
+        let glb_scenes = glb::load(&glb.path).expect("Failed to load glb file");
 
         let mut glb_blas_list = vec![];
         materials_offset_indices.push(materials.len());
@@ -276,11 +276,11 @@ pub(crate) fn load_scene(
                 };
 
                 let ty = match material.alpha_mode {
-                    crate::glb::AlphaMode::Opaque => 0,
-                    crate::glb::AlphaMode::Mask => 1,
-                    crate::glb::AlphaMode::Blend => 2,
+                    glb::AlphaMode::Opaque => 0,
+                    glb::AlphaMode::Mask => 1,
+                    glb::AlphaMode::Blend => 2,
                 };
-                let transparent_flag = material.alpha_mode != crate::glb::AlphaMode::Opaque;
+                let transparent_flag = material.alpha_mode != glb::AlphaMode::Opaque;
 
                 let material = Material {
                     base_color_factor: [

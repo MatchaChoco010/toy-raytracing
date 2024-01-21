@@ -1,11 +1,10 @@
 mod scene;
-mod utils;
+pub use scene::*;
+mod glb_data;
+use glb_data::*;
 
 use std::error::Error;
 use std::path::Path;
-
-pub use scene::*;
-use utils::GlbData;
 
 pub fn load<P>(path: P) -> Result<Vec<Scene>, Box<dyn Error + Send + Sync>>
 where

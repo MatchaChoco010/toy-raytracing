@@ -4,7 +4,7 @@ mod vertex;
 use glam::{vec4, Mat4, Vec2, Vec3, Vec4};
 use std::sync::Arc;
 
-use crate::glb::utils::*;
+use crate::GlbData;
 pub use material::*;
 pub use vertex::*;
 

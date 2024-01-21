@@ -1,0 +1,10 @@
+[package]
+name = "glb"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+base64 = "0.21.7"
+glam.workspace = true
+gltf = { version = "1.4.0", features = ["KHR_materials_emissive_strength"] }
+image = "0.24.7"
