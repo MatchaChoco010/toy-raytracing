@@ -2,6 +2,7 @@ use ashtray::{ImageViewHandle, SamplerHandle};
 use std::sync::{Arc, Mutex};
 
 pub struct SceneViewState {
+    pub rendering_time: std::time::Duration,
     pub fit_view: bool,
     pub width: u32,
     pub height: u32,
@@ -58,6 +59,7 @@ impl SceneView {
                 current_sampler: None,
 
                 state: Arc::new(Mutex::new(SceneViewState {
+                    rendering_time: std::time::Duration::from_secs(0),
                     fit_view: true,
                     width: 400,
                     height: 300,
@@ -127,6 +129,7 @@ impl SceneView {
         inner.current_image_view = Some(next_image.image_view);
         inner.current_sampler = Some(next_image.sampler);
         state.sample_count = next_image.sample_count;
+        state.rendering_time = next_image.rendering_time;
 
         if let Some(texture_id) = inner.scene_image.take() {
             inner.image_registry.unregister_user_texture(texture_id);

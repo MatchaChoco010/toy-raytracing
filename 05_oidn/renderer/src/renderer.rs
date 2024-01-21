@@ -1,5 +1,6 @@
 use ash::vk;
 use bytemuck;
+use std::time::{Duration, Instant};
 
 use crate::NextImage;
 
@@ -87,6 +88,8 @@ pub struct Renderer {
     current_image_index: usize,
 
     sample_count: u32,
+    rendering_start_time: Instant,
+    rendering_time: Duration,
 }
 impl Renderer {
     pub fn new(
@@ -235,6 +238,8 @@ impl Renderer {
             current_image_index: 0,
 
             sample_count: 0,
+            rendering_start_time: Instant::now(),
+            rendering_time: Duration::from_secs(0),
         }
     }
 
@@ -379,6 +384,8 @@ impl Renderer {
             // width/heightが変わっていたらstorage imageをリサイズして作り直す。
             self.params = parameters;
             self.sample_count = 0;
+            self.rendering_start_time = Instant::now();
+            self.rendering_time = Duration::from_secs(0);
 
             self.device.wait_idle();
 
@@ -459,6 +466,8 @@ impl Renderer {
             // そうでなくてdirtyなら蓄積をリセットするコマンドを発行する。
             self.params = parameters;
             self.sample_count = 0;
+            self.rendering_start_time = Instant::now();
+            self.rendering_time = Duration::from_secs(0);
 
             let command_buffer = self.render_command_buffer.clone();
             command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
@@ -624,6 +633,7 @@ impl Renderer {
             .wait_fences(&[self.in_flight_fence.clone()], u64::MAX);
 
         self.sample_count += 1;
+        self.rendering_time = self.rendering_start_time.elapsed();
     }
 
     // finalしつつtextureに結果を焼き込む
@@ -708,6 +718,7 @@ impl Renderer {
             image_view,
             sampler,
             sample_count,
+            rendering_time: self.rendering_time,
         }
     }
 

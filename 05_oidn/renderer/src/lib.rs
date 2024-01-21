@@ -1,4 +1,6 @@
 mod renderer;
+use std::time::Duration;
+
 pub use renderer::Renderer;
 mod scene;
 pub use scene::*;
@@ -7,6 +9,7 @@ pub struct NextImage {
     pub image_view: ashtray::ImageViewHandle,
     pub sampler: ashtray::SamplerHandle,
     pub sample_count: u32,
+    pub rendering_time: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq)]
