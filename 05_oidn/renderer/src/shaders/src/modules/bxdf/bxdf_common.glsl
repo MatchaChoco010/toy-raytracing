@@ -56,6 +56,7 @@ MaterialData getMaterialData(Prd prd, Material material, vec3 viewDirection) {
     baseColor = material.baseColorFactor.rgb * pixel.rgb;
     alpha = material.baseColorFactor.a * pixel.a;
   }
+  alpha *= alpha;
 
   vec3 emissive;
   if (material.emissiveTextureIndex == -1) {

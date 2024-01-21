@@ -8,8 +8,8 @@
 vec3 evalTransparentBtdf(BrdfData brdf, MaterialData material, vec3 L) {
   // transmissionColorはユーザーが与えるべき値だけど、
   // 今回はbaseColorとalphaから適当に決める。
-  // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
-  // 適当に透過色として決めた。
+  // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ
+  // 通り抜けたときに吸収される値を 適当に透過色として決めた。
   vec3 transmissionColor =
       exp(log(clamp(material.baseColor, 0.00001, 1.0)) * material.alpha);
 
@@ -18,7 +18,7 @@ vec3 evalTransparentBtdf(BrdfData brdf, MaterialData material, vec3 L) {
   // をもとに次のように計算する。
   // ```
   // // 5mmの厚さとする
-  // float thinDepth = 5.0 / 100.0;
+  // float thinDepth = 5.0 / 1000.0;
   // vec3 absorption = -log(transmissionColor) / max(thinDepth, 0.0001);
   // vec3 transparentBtdf = exp(-absorption * thinDepth);
   // ```

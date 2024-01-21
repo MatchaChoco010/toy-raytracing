@@ -86,7 +86,10 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
     // 反射の場合
     if (materialData.roughness == 0.0) {
       // 完全鏡面反射
-      specularPdf = 1.0;
+      if (dot(reflect(-viewDirection, materialData.shadingNormal),
+              outDirection) > 0.9999) {
+        specularPdf = 1.0;
+      }
     } else {
       // GGX反射
       specularPdf = evalGGXPdf(brdfData, materialData, L);
@@ -122,11 +125,6 @@ sampleStandardBsdf(float[3] u, Prd prd, Material material, vec3 viewDirection) {
   BrdfData brdfData = getBrdfData(materialData, viewDirection);
 
   result.emissive = materialData.emissive;
-
-  if (brdfData.V.z == 0.0) {
-    result.traceNext = false;
-    return result;
-  }
 
   float weightSpecular = 1.0;
   weightSpecular *= materialData.alpha;
