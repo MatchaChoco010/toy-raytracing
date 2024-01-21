@@ -80,6 +80,8 @@ impl Pane {
 
                                 ui.add_enabled_ui(!state.fit_view, |ui| {
                                     ui.label("size: ");
+                                });
+                                ui.add_enabled_ui(!state.fit_view, |ui| {
                                     ui.with_layout(
                                         egui::Layout::left_to_right(egui::Align::TOP),
                                         |ui| {
