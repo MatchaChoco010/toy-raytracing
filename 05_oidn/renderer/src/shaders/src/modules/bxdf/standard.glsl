@@ -16,10 +16,12 @@ vec3 evalStandardBsdfNEE(Prd prd, Material material, vec3 viewDirection,
   vec3 L = normalize(inverse(brdfData.tbn) * outDirection);
 
   float weightSpecular = 1.0;
+  weightSpecular *= materialData.alpha;
   float NoV = clamp(brdfData.V.z, 0.0, 1.0);
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
+  weightDiffuse *= materialData.alpha;
   float weightTransparent = 1.0 - materialData.alpha;
 
   // NEEではperfect specular面はサンプリングしないので透過と完全鏡面は無視する
@@ -67,10 +69,12 @@ float evalStandardPdf(Prd prd, Material material, vec3 viewDirection,
   vec3 N = vec3(0.0, 0.0, 1.0);
 
   float weightSpecular = 1.0;
+  weightSpecular *= materialData.alpha;
   float NoV = clamp(dot(N, brdfData.V), 0.0, 1.0);
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
+  weightDiffuse *= materialData.alpha;
   float weightTransparent = 1.0 - materialData.alpha;
   float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
@@ -119,7 +123,7 @@ sampleStandardBsdf(float[3] u, Prd prd, Material material, vec3 viewDirection) {
   result.emissive = materialData.emissive;
 
   float weightSpecular = 1.0;
-
+  weightSpecular *= materialData.alpha;
   float NoV = clamp(brdfData.V.z, 0.0, 1.0);
   if (NoV == 0.0) {
     result.traceNext = false;
@@ -128,9 +132,8 @@ sampleStandardBsdf(float[3] u, Prd prd, Material material, vec3 viewDirection) {
   float weightDiffuse = 1.0 - luminance(Fresnel(brdfData.specularF0, NoV));
   weightDiffuse *= 1.0 - materialData.metallic;
   weightDiffuse = clamp(weightDiffuse, 0.0, 1.0);
-
+  weightDiffuse *= materialData.alpha;
   float weightTransparent = 1.0 - materialData.alpha;
-
   float[3] func = float[3](weightSpecular, weightDiffuse, weightTransparent);
 
   uint bsdfType;
