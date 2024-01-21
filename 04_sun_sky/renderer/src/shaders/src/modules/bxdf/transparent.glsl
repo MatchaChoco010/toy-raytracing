@@ -11,7 +11,7 @@ vec3 evalTransparentBtdf(BrdfData brdf, MaterialData material, vec3 L) {
   // 厚さ1mでbaseColorだけ吸収する材質をalpha(m)の厚さだけ通り抜けたときに吸収される値を
   // 適当に透過色として決めた。
   vec3 transmissionColor =
-      exp(log(clamp(material.baseColor, 0.0001, 1.0)) * material.alpha);
+      exp(log(clamp(material.baseColor, 0.00001, 1.0)) * material.alpha);
 
   // Absorption coefficient from Disney BSDF:
   // http://blog.selfshadow.com/publications/s2015-shading-course/burley/s2015_pbs_disney_bsdf_notes.pdf

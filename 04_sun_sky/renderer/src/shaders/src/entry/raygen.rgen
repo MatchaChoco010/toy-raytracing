@@ -83,9 +83,9 @@ void main() {
 
     // sunとskyを足す
     if (prd.miss == 1) {
-      // if (pushConstants.sunEnabled == 1 && isSunDirection(direction)) {
-      //   radiance += throughput * getSunStrength();
-      // }
+      if (pushConstants.sunEnabled == 1 && isSunDirection(direction)) {
+        radiance += throughput * getSunStrength();
+      }
       if (pushConstants.skyEnabled == 1) {
         radiance += throughput * getSkyColor(direction);
       }
@@ -109,39 +109,38 @@ void main() {
       throughput /= russianRouletteProbability;
     }
 
-    // if (pushConstants.sunEnabled == 1) {
-    //   // sun
-    //   vec3 sunStrength = getSunStrength();
-    //   float[2] u2 = SAMPLE_RANDOM(2, 2, 3)(prd.depth);
-    //   vec3 sunDirection = sampleSunDirection(u2);
-    //   shadowPrd.shadow = 0;
-    //   shadowPrd.transparent = vec3(1.0);
-    //   traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
-    //               0xff, // mask
-    //               2,    // sbtRecordOffset
-    //               1,    // sbtRecordStride
-    //               1,    // missIndex
-    //               origin, tmin, sunDirection, tmax,
-    //               1 // payload location
-    //   );
-    //   if (shadowPrd.shadow == 0 && isSunDirection(sunDirection)) {
-    //     float sunPdf = getSunPdf(sunDirection);
-    //     float skyPdf = getSkyPdf(sunDirection);
-    //     vec3 bsdfWeight;
-    //     vec3 emissive;
-    //     evalStandardBsdf(prd, material, viewDirection, sunDirection,
-    //     bsdfWeight,
-    //                      emissive);
-    //     float bsdfPdf =
-    //         evalStandardPdf(prd, material, viewDirection, sunDirection);
-    //     float misWeight =
-    //         misWeightPowerHeuristic(sunPdf, float[](sunPdf, 1.0, bsdfPdf));
-    //     float cosTheta =
-    //         max(dot(sunDirection, materialData.shadingNormal), 0.0);
-    //     radiance += sunStrength * throughput * shadowPrd.transparent *
-    //                 bsdfWeight * cosTheta * misWeight / sunPdf;
-    //   }
-    // }
+    if (pushConstants.sunEnabled == 1) {
+      // sun
+      vec3 sunStrength = getSunStrength();
+      float[2] u2 = SAMPLE_RANDOM(2, 2, 3)(prd.depth);
+      vec3 sunDirection = sampleSunDirection(u2);
+      shadowPrd.shadow = 0;
+      shadowPrd.transparent = vec3(1.0);
+      traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT,
+                  0xff, // mask
+                  2,    // sbtRecordOffset
+                  1,    // sbtRecordStride
+                  1,    // missIndex
+                  origin, tmin, sunDirection, tmax,
+                  1 // payload location
+      );
+      if (shadowPrd.shadow == 0 && isSunDirection(sunDirection)) {
+        float sunPdf = getSunPdf(sunDirection);
+        float skyPdf = getSkyPdf(sunDirection);
+        vec3 bsdfWeight;
+        vec3 emissive;
+        evalStandardBsdf(prd, material, viewDirection, sunDirection, bsdfWeight,
+                         emissive);
+        float bsdfPdf =
+            evalStandardPdf(prd, material, viewDirection, sunDirection);
+        float misWeight =
+            misWeightPowerHeuristic(sunPdf, float[](sunPdf, 1.0, bsdfPdf));
+        float cosTheta =
+            max(dot(sunDirection, materialData.shadingNormal), 0.0);
+        radiance += sunStrength * throughput * shadowPrd.transparent *
+                    bsdfWeight * cosTheta * misWeight / sunPdf;
+      }
+    }
 
     if (pushConstants.skyEnabled == 1) {
       // sky
@@ -167,8 +166,7 @@ void main() {
       float bsdfPdf =
           evalStandardPdf(prd, material, viewDirection, skyDirection);
       if (shadowPrd.shadow == 0 && skyPdf != 0.0 && bsdfPdf != 0.0) {
-        // float sunPdf = getSunPdf(skyDirection);
-        float sunPdf = 0.0;
+        float sunPdf = getSunPdf(skyDirection);
         float misWeight =
             misWeightPowerHeuristic(skyPdf, float[](sunPdf, skyPdf, bsdfPdf));
         float cosTheta =
@@ -197,13 +195,13 @@ void main() {
 
     if (isSamplePerfectSpecular) {
       direction = dir;
-      throughput *= bsdf;
+      throughput *= bsdf / bsdfPdf;
     } else {
       float sunPdf = 0.0;
       float skyPdf = 0.0;
-      // if (pushConstants.sunEnabled == 1) {
-      //   sunPdf = getSunPdf(dir);
-      // }
+      if (pushConstants.sunEnabled == 1) {
+        sunPdf = getSunPdf(dir);
+      }
       if (pushConstants.skyEnabled == 1) {
         skyPdf = getSkyPdf(dir);
       }
