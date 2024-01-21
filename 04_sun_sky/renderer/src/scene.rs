@@ -243,7 +243,7 @@ pub(crate) fn load_scene(
                     -1
                 };
 
-                let emissive_factor = material.emissive.factor * 100000.0;
+                let emissive_factor = material.emissive.factor * 1000.0;
                 let emissive_texture_index = if let Some(texture) = &material.emissive.texture {
                     let data = texture
                         .enumerate_pixels()
@@ -454,27 +454,6 @@ pub(crate) fn load_scene(
         &sky_pdf_column_data,
         vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
     );
-
-    luminance(glam::vec3(
-        sky_cdf_row_data_flatten[0],
-        sky_cdf_row_data_flatten[1],
-        sky_cdf_row_data_flatten[2],
-    ));
-    luminance(glam::vec3(
-        sky_pdf_row_data_flatten_raw[0],
-        sky_pdf_row_data_flatten_raw[1],
-        sky_pdf_row_data_flatten_raw[2],
-    ));
-    luminance(glam::vec3(
-        sky_cdf_column_data_raw[0],
-        sky_cdf_column_data_raw[1],
-        sky_cdf_column_data_raw[2],
-    ));
-    luminance(glam::vec3(
-        sky_pdf_column_data[0],
-        sky_pdf_column_data[1],
-        sky_pdf_column_data[2],
-    ));
 
     SceneObjects {
         _sampler: sampler,
