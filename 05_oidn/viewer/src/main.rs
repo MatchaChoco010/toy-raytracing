@@ -82,13 +82,24 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
         // load scene
         let scene = renderer::Scene {
             sky_texture_path: "assets/sky/scythian_tombs_2_1k.exr".into(),
-            glb_list: vec![renderer::Glb {
-                path: "assets/glb/SanMiguel/san-miguel.glb".into(),
-            }],
-            instances: vec![renderer::Instance {
-                glb_index: 0,
-                transform: glam::Mat4::IDENTITY,
-            }],
+            glb_list: vec![
+                renderer::Glb {
+                    path: "assets/glb/SanMiguel/san-miguel.glb".into(),
+                },
+                renderer::Glb {
+                    path: "assets/glb/light.glb".into(),
+                },
+            ],
+            instances: vec![
+                renderer::Instance {
+                    glb_index: 0,
+                    transform: glam::Mat4::IDENTITY,
+                },
+                renderer::Instance {
+                    glb_index: 1,
+                    transform: glam::Mat4::from_translation(glam::vec3(14.0, 2.0, 3.5)),
+                },
+            ],
         };
         renderer.load_scene(&scene);
 
