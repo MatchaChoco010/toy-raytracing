@@ -63,6 +63,33 @@ impl Pane {
                                 ));
                                 state.max_recursion_depth = state.max_recursion_depth.clamp(1, 64);
                                 ui.end_row();
+
+                                ui.label("display image: ");
+                                egui::ComboBox::from_id_source("display_image")
+                                    .selected_text(format!("{:?}", state.display_image))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut state.display_image,
+                                            renderer::DisplayImage::Final,
+                                            "Final",
+                                        );
+                                        ui.selectable_value(
+                                            &mut state.display_image,
+                                            renderer::DisplayImage::BaseColor,
+                                            "BaseColor",
+                                        );
+                                        ui.selectable_value(
+                                            &mut state.display_image,
+                                            renderer::DisplayImage::Normal,
+                                            "Normal",
+                                        );
+                                        ui.selectable_value(
+                                            &mut state.display_image,
+                                            renderer::DisplayImage::Resolved,
+                                            "Resolved",
+                                        );
+                                    });
+                                ui.end_row();
                             });
                     });
 

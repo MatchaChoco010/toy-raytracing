@@ -7,18 +7,19 @@ use crate::NextImage;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct PushConstants {
+    accumulate_image_index: u32,
+    base_color_image_index: u32,
+    normal_image_index: u32,
+    sample_index: u32,
     camera_rotate: glam::Mat4,
     camera_translate: glam::Vec3,
     camera_fov: f32,
-    sample_index: u32,
     max_recursion_depth: u32,
-    storage_image_index: u32,
     instance_params_index: u32,
     materials_index: u32,
-    sun_strength: f32,
-    padding_0: [u32; 2],
+    padding_0: [u32; 1],
     sun_color: glam::Vec3,
-    padding_1: [u32; 1],
+    sun_strength: f32,
     sun_direction: glam::Vec2,
     sun_angle: f32,
     sun_enabled: u32,
@@ -27,25 +28,32 @@ struct PushConstants {
     sky_rotation: f32,
     sky_strength: f32,
     sky_enabled: u32,
-    padding_2: [u32; 3],
+    padding_1: [u32; 3],
     sky_buffer_address: u64,
     sky_cdf_row_buffer_address: u64,
     sky_pdf_row_buffer_address: u64,
     sky_cdf_column_buffer_address: u64,
     sky_pdf_column_buffer_address: u64,
-    padding_3: [u32; 2],
+    padding_2: [u32; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ResolvePushConstants {
+    input_index: u32,
+    output_index: u32,
+    sample_count: u32,
+    l_white: f32,
+    aperture: f32,
+    shutter_speed: f32,
+    iso: f32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct FinalPushConstants {
-    sample_count: u32,
     input_index: u32,
     output_index: u32,
-    l_white: f32,
-    aperture: f32,
-    shutter_speed: f32,
-    iso: f32,
 }
 
 pub struct Renderer {
@@ -59,16 +67,20 @@ pub struct Renderer {
     compute_command_pool: ashtray::CommandPoolHandle,
     transfer_command_buffer: ashtray::CommandBufferHandle,
     allocator: ashtray::AllocatorHandle,
-    storage_image: ashtray::utils::ImageHandles,
-    images: [ashtray::utils::ImageHandles; 2],
-    sampler: ashtray::SamplerHandle,
 
-    render_command_buffer: ashtray::CommandBufferHandle,
-    in_flight_fence: ashtray::FenceHandle,
+    sampler: ashtray::SamplerHandle,
+    accumulate_image: ashtray::utils::ImageHandles,
+    base_color_image: ashtray::utils::ImageHandles,
+    normal_image: ashtray::utils::ImageHandles,
+    resolved_image: ashtray::utils::ImageHandles,
+    output_images: [ashtray::utils::ImageHandles; 2],
 
     descriptor_sets: ashtray::utils::BindlessDescriptorSets,
-    accumulate_storage_image_index: u32,
-    final_storage_image_indices: [u32; 2],
+    accumulate_image_index: u32,
+    base_color_image_index: u32,
+    normal_image_index: u32,
+    resolved_image_index: u32,
+    output_image_indices: [u32; 2],
 
     scene_objects: Option<crate::scene::SceneObjects>,
 
@@ -79,17 +91,26 @@ pub struct Renderer {
     shader_binding_table: Option<ashtray::utils::ShaderBindingTable>,
     instance_params_buffer_index: Option<u32>,
     materials_buffer_index: Option<u32>,
+    render_command_buffer: ashtray::CommandBufferHandle,
+    render_fence: ashtray::FenceHandle,
 
-    final_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
-    final_compute_pipeline: ashtray::ComputePipelineHandle,
-    final_command_buffers: [ashtray::CommandBufferHandle; 2],
-    final_fences: [ashtray::FenceHandle; 2],
+    resolve_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
+    resolve_compute_pipeline: ashtray::ComputePipelineHandle,
+    resolve_command_buffer: ashtray::CommandBufferHandle,
+    resolve_fence: ashtray::FenceHandle,
+
+    output_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
+    output_compute_pipeline: ashtray::ComputePipelineHandle,
+    output_command_buffers: [ashtray::CommandBufferHandle; 2],
+    output_fences: [ashtray::FenceHandle; 2],
 
     current_image_index: usize,
 
     sample_count: u32,
     rendering_start_time: Instant,
     rendering_time: Duration,
+
+    need_resolve: bool,
 }
 impl Renderer {
     pub fn new(
@@ -111,7 +132,12 @@ impl Renderer {
                 .into_iter()
                 .next()
                 .unwrap();
-        let storage_image = ashtray::utils::create_storage_image(
+
+        // samplerの作成
+        let sampler = ashtray::utils::create_sampler(&device);
+
+        // レンダリングに必要なimageの作成
+        let accumulate_image = ashtray::utils::create_storage_image(
             &device,
             &queue_handles,
             &allocator,
@@ -119,7 +145,31 @@ impl Renderer {
             width,
             height,
         );
-        let images = [
+        let base_color_image = ashtray::utils::create_storage_image(
+            &device,
+            &queue_handles,
+            &allocator,
+            &transfer_command_buffer,
+            width,
+            height,
+        );
+        let normal_image = ashtray::utils::create_storage_image(
+            &device,
+            &queue_handles,
+            &allocator,
+            &transfer_command_buffer,
+            width,
+            height,
+        );
+        let resolved_image = ashtray::utils::create_storage_image(
+            &device,
+            &queue_handles,
+            &allocator,
+            &transfer_command_buffer,
+            width,
+            height,
+        );
+        let output_images = [
             ashtray::utils::create_shader_readonly_image(
                 &device,
                 &queue_handles,
@@ -141,7 +191,6 @@ impl Renderer {
                 vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
             ),
         ];
-        let sampler = ashtray::utils::create_sampler(&device);
 
         // render用command bufferを作成
         let render_command_buffer = {
@@ -155,23 +204,64 @@ impl Renderer {
         };
 
         // render用fenceの作成
-        let in_flight_fence = ashtray::utils::create_signaled_fence(&device);
+        let render_fence = ashtray::utils::create_signaled_fence(&device);
 
         // bindlessなdescriptor setsを作成
         let descriptor_sets = ashtray::utils::BindlessDescriptorSets::create(&device);
-        let accumulate_storage_image_index = 0;
+        let accumulate_image_index = 0;
         descriptor_sets
             .storage_image
-            .update(&storage_image, accumulate_storage_image_index);
-        let final_storage_image_indices = [1, 2];
+            .update(&accumulate_image, accumulate_image_index);
+        let base_color_image_index = 1;
         descriptor_sets
             .storage_image
-            .update(&images[0], final_storage_image_indices[0]);
+            .update(&base_color_image, base_color_image_index);
+        let normal_image_index = 2;
         descriptor_sets
             .storage_image
-            .update(&images[1], final_storage_image_indices[1]);
+            .update(&normal_image, normal_image_index);
+        let resolved_image_index = 3;
+        descriptor_sets
+            .storage_image
+            .update(&resolved_image, resolved_image_index);
+        let output_image_indices = [4, 5];
+        descriptor_sets
+            .storage_image
+            .update(&output_images[0], output_image_indices[0]);
+        descriptor_sets
+            .storage_image
+            .update(&output_images[1], output_image_indices[1]);
 
-        let final_compute_pipeline_layout = device.create_pipeline_layout(
+        // resolveのcompute pipelineを作成
+        let resolve_compute_pipeline_layout = device.create_pipeline_layout(
+            &vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&[*descriptor_sets.storage_image.layout])
+                .push_constant_ranges(&[vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<ResolvePushConstants>() as u32,
+                }]),
+        );
+        let resolve_compute_shader_module = ashtray::utils::create_shader_module(
+            &device,
+            &include_bytes!("./shaders/spv/resolve.comp.spv")[..],
+        );
+        let resolve_compute_pipeline = ashtray::utils::create_compute_pipeline(
+            &device,
+            &resolve_compute_pipeline_layout,
+            &resolve_compute_shader_module,
+        );
+        let resolve_command_pool =
+            ashtray::utils::create_compute_command_pool(&device, &queue_handles);
+        let resolve_command_buffer =
+            ashtray::utils::allocate_command_buffers(&device, &resolve_command_pool, 1)
+                .into_iter()
+                .next()
+                .unwrap();
+        let resolve_fence = ashtray::utils::create_signaled_fence(&device);
+
+        // outputのcompute pipelineを作成
+        let output_compute_pipeline_layout = device.create_pipeline_layout(
             &vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&[*descriptor_sets.storage_image.layout])
                 .push_constant_ranges(&[vk::PushConstantRange {
@@ -180,22 +270,22 @@ impl Renderer {
                     size: std::mem::size_of::<FinalPushConstants>() as u32,
                 }]),
         );
-        let final_compute_shader_module = ashtray::utils::create_shader_module(
+        let output_compute_shader_module = ashtray::utils::create_shader_module(
             &device,
-            &include_bytes!("./shaders/spv/final.comp.spv")[..],
+            &include_bytes!("./shaders/spv/output.comp.spv")[..],
         );
-        let final_compute_pipeline = ashtray::utils::create_compute_pipeline(
+        let output_compute_pipeline = ashtray::utils::create_compute_pipeline(
             &device,
-            &final_compute_pipeline_layout,
-            &final_compute_shader_module,
+            &output_compute_pipeline_layout,
+            &output_compute_shader_module,
         );
-        let final_command_pool =
+        let output_command_pool =
             ashtray::utils::create_compute_command_pool(&device, &queue_handles);
-        let final_command_buffers: [ashtray::CommandBufferHandle; 2] =
-            ashtray::utils::allocate_command_buffers(&device, &final_command_pool, 2)
+        let output_command_buffers: [ashtray::CommandBufferHandle; 2] =
+            ashtray::utils::allocate_command_buffers(&device, &output_command_pool, 2)
                 .try_into()
                 .unwrap();
-        let final_fences = [
+        let output_fences = [
             ashtray::utils::create_signaled_fence(&device),
             ashtray::utils::create_signaled_fence(&device),
         ];
@@ -211,35 +301,49 @@ impl Renderer {
             compute_command_pool,
             transfer_command_buffer,
             allocator,
-            storage_image,
-            images,
+
             sampler,
+            accumulate_image,
+            base_color_image,
+            normal_image,
+            resolved_image,
+            output_images,
 
             descriptor_sets,
-            accumulate_storage_image_index,
-            final_storage_image_indices,
+            accumulate_image_index,
+            base_color_image_index,
+            normal_image_index,
+            resolved_image_index,
+            output_image_indices,
 
             scene_objects: None,
+
             ray_tracing_pipeline: None,
             ray_tracing_pipeline_layout: None,
             acceleration_structure_descriptor_set: None,
             shader_binding_table: None,
             instance_params_buffer_index: None,
             materials_buffer_index: None,
-
             render_command_buffer,
-            in_flight_fence,
+            render_fence,
 
-            final_compute_pipeline_layout,
-            final_compute_pipeline,
-            final_command_buffers,
-            final_fences,
+            resolve_compute_pipeline_layout,
+            resolve_compute_pipeline,
+            resolve_command_buffer,
+            resolve_fence,
+
+            output_compute_pipeline_layout,
+            output_compute_pipeline,
+            output_command_buffers,
+            output_fences,
 
             current_image_index: 0,
 
             sample_count: 0,
             rendering_start_time: Instant::now(),
             rendering_time: Duration::from_secs(0),
+
+            need_resolve: false,
         }
     }
 
@@ -389,7 +493,8 @@ impl Renderer {
 
             self.device.wait_idle();
 
-            self.storage_image = ashtray::utils::create_storage_image(
+            // imageの再生性
+            self.accumulate_image = ashtray::utils::create_storage_image(
                 &self.device,
                 &self.queue_handles,
                 &self.allocator,
@@ -397,40 +502,31 @@ impl Renderer {
                 self.params.width,
                 self.params.height,
             );
-
-            let command_buffer = self.render_command_buffer.clone();
-            command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
-            ashtray::utils::begin_onetime_command_buffer(&command_buffer);
-
-            command_buffer.cmd_clear_color_image(
-                &self.storage_image.image,
-                vk::ImageLayout::GENERAL,
-                &vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
-                },
-                &[vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                }],
+            self.base_color_image = ashtray::utils::create_storage_image(
+                &self.device,
+                &self.queue_handles,
+                &self.allocator,
+                &self.transfer_command_buffer,
+                self.params.width,
+                self.params.height,
             );
-
-            command_buffer.end_command_buffer();
-            let buffers_to_submit = [*command_buffer];
-            let submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&buffers_to_submit)
-                .build();
-            let fence = ashtray::utils::create_fence(&self.device);
-            self.device.queue_submit(
-                self.queue_handles.graphics.queue,
-                &[submit_info],
-                Some(fence.clone()),
+            self.normal_image = ashtray::utils::create_storage_image(
+                &self.device,
+                &self.queue_handles,
+                &self.allocator,
+                &self.transfer_command_buffer,
+                self.params.width,
+                self.params.height,
             );
-            self.device.wait_fences(&[fence], u64::MAX);
-
-            self.images = [
+            self.resolved_image = ashtray::utils::create_storage_image(
+                &self.device,
+                &self.queue_handles,
+                &self.allocator,
+                &self.transfer_command_buffer,
+                self.params.width,
+                self.params.height,
+            );
+            self.output_images = [
                 ashtray::utils::create_shader_readonly_image(
                     &self.device,
                     &self.queue_handles,
@@ -453,28 +549,13 @@ impl Renderer {
                 ),
             ];
 
-            self.descriptor_sets
-                .storage_image
-                .update(&self.storage_image, self.accumulate_storage_image_index);
-            self.descriptor_sets
-                .storage_image
-                .update(&self.images[0], self.final_storage_image_indices[0]);
-            self.descriptor_sets
-                .storage_image
-                .update(&self.images[1], self.final_storage_image_indices[1]);
-        } else if self.params != parameters {
-            // そうでなくてdirtyなら蓄積をリセットするコマンドを発行する。
-            self.params = parameters;
-            self.sample_count = 0;
-            self.rendering_start_time = Instant::now();
-            self.rendering_time = Duration::from_secs(0);
-
+            // accumulate bufferのクリア
             let command_buffer = self.render_command_buffer.clone();
             command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
             ashtray::utils::begin_onetime_command_buffer(&command_buffer);
 
             command_buffer.cmd_clear_color_image(
-                &self.storage_image.image,
+                &self.accumulate_image.image,
                 vk::ImageLayout::GENERAL,
                 &vk::ClearColorValue {
                     float32: [0.0, 0.0, 0.0, 1.0],
@@ -487,7 +568,67 @@ impl Renderer {
                     layer_count: 1,
                 }],
             );
+            command_buffer.end_command_buffer();
+            let buffers_to_submit = [*command_buffer];
+            let submit_info = vk::SubmitInfo::builder()
+                .command_buffers(&buffers_to_submit)
+                .build();
+            let fence = ashtray::utils::create_fence(&self.device);
+            self.device.queue_submit(
+                self.queue_handles.graphics.queue,
+                &[submit_info],
+                Some(fence.clone()),
+            );
+            self.device.wait_fences(&[fence], u64::MAX);
 
+            // descriptor setの更新
+            let accumulate_image_index = 0;
+            self.descriptor_sets
+                .storage_image
+                .update(&self.accumulate_image, accumulate_image_index);
+            let base_color_image_index = 1;
+            self.descriptor_sets
+                .storage_image
+                .update(&self.base_color_image, base_color_image_index);
+            let normal_image_index = 2;
+            self.descriptor_sets
+                .storage_image
+                .update(&self.normal_image, normal_image_index);
+            let resolved_image_index = 3;
+            self.descriptor_sets
+                .storage_image
+                .update(&self.resolved_image, resolved_image_index);
+            let output_image_indices = [4, 5];
+            self.descriptor_sets
+                .storage_image
+                .update(&self.output_images[0], output_image_indices[0]);
+            self.descriptor_sets
+                .storage_image
+                .update(&self.output_images[1], output_image_indices[1]);
+        } else if self.params != parameters {
+            // そうでなくてdirtyなら蓄積をリセットするコマンドのみを発行する。
+            self.params = parameters;
+            self.sample_count = 0;
+            self.rendering_start_time = Instant::now();
+            self.rendering_time = Duration::from_secs(0);
+
+            let command_buffer = self.render_command_buffer.clone();
+            command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+            ashtray::utils::begin_onetime_command_buffer(&command_buffer);
+            command_buffer.cmd_clear_color_image(
+                &self.accumulate_image.image,
+                vk::ImageLayout::GENERAL,
+                &vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+                &[vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                }],
+            );
             command_buffer.end_command_buffer();
             let buffers_to_submit = [*command_buffer];
             let submit_info = vk::SubmitInfo::builder()
@@ -565,6 +706,9 @@ impl Renderer {
                 | vk::ShaderStageFlags::MISS_KHR,
             0,
             &[PushConstants {
+                accumulate_image_index: self.accumulate_image_index,
+                base_color_image_index: self.base_color_image_index,
+                normal_image_index: self.normal_image_index,
                 camera_rotate: glam::Mat4::from_euler(
                     glam::EulerRot::YXZ,
                     self.params.rotate_y.to_radians(),
@@ -579,7 +723,6 @@ impl Renderer {
                 camera_fov: self.params.fov.to_radians(),
                 sample_index: self.sample_count as u32,
                 max_recursion_depth: self.params.max_recursion_depth,
-                storage_image_index: self.accumulate_storage_image_index,
                 instance_params_index,
                 materials_index,
                 sun_direction: glam::vec2(
@@ -600,10 +743,9 @@ impl Renderer {
                 sky_pdf_row_buffer_address: scene.sky_texture_pdf_row_buffer.device_address,
                 sky_cdf_column_buffer_address: scene.sky_texture_cdf_column_buffer.device_address,
                 sky_pdf_column_buffer_address: scene.sky_texture_pdf_column_buffer.device_address,
-                padding_0: [0; 2],
-                padding_1: [0; 1],
-                padding_2: [0; 3],
-                padding_3: [0; 2],
+                padding_0: [0; 1],
+                padding_1: [0; 3],
+                padding_2: [0; 2],
             }],
         );
 
@@ -623,24 +765,85 @@ impl Renderer {
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(&buffers_to_submit)
             .build();
-        self.device.reset_fences(&[self.in_flight_fence.clone()]);
+        self.device.reset_fences(&[self.render_fence.clone()]);
         self.device.queue_submit(
             self.queue_handles.graphics.queue,
             &[submit_info],
-            Some(self.in_flight_fence.clone()),
+            Some(self.render_fence.clone()),
         );
         self.device
-            .wait_fences(&[self.in_flight_fence.clone()], u64::MAX);
+            .wait_fences(&[self.render_fence.clone()], u64::MAX);
 
         self.sample_count += 1;
         self.rendering_time = self.rendering_start_time.elapsed();
+
+        self.need_resolve = true;
     }
 
-    // finalしつつtextureに結果を焼き込む
-    fn take_image(&mut self) -> crate::NextImage {
-        let image_handles = &self.images[self.current_image_index];
-        let fences = [self.final_fences[self.current_image_index].clone()];
-        let command_buffer = self.final_command_buffers[self.current_image_index].clone();
+    // render imageのresolveする
+    fn resolve(&mut self) {
+        if !self.need_resolve {
+            return;
+        }
+
+        let command_buffer = self.resolve_command_buffer.clone();
+
+        command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+        ashtray::utils::begin_onetime_command_buffer(&command_buffer);
+
+        command_buffer.cmd_bind_compute_pipeline(&self.resolve_compute_pipeline);
+        command_buffer.cmd_bind_descriptor_sets(
+            vk::PipelineBindPoint::COMPUTE,
+            &self.resolve_compute_pipeline_layout,
+            0,
+            &[self.descriptor_sets.storage_image.set.clone()],
+            &[],
+        );
+        command_buffer.cmd_push_constants(
+            &self.resolve_compute_pipeline_layout,
+            vk::ShaderStageFlags::COMPUTE,
+            0,
+            &[ResolvePushConstants {
+                sample_count: self.sample_count,
+                input_index: self.accumulate_image_index,
+                output_index: self.resolved_image_index,
+                l_white: self.params.l_white,
+                aperture: self.params.aperture,
+                shutter_speed: self.params.shutter_speed,
+                iso: self.params.iso,
+            }],
+        );
+        command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
+        command_buffer.end_command_buffer();
+
+        self.device.reset_fences(&[self.resolve_fence.clone()]);
+        self.device.queue_submit(
+            self.queue_handles.compute.queue,
+            std::slice::from_ref(
+                &vk::SubmitInfo::builder()
+                    .command_buffers(&[*command_buffer])
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
+                    .wait_semaphores(&[]),
+            ),
+            Some(self.resolve_fence.clone()),
+        );
+        self.device
+            .wait_fences(&[self.resolve_fence.clone()], u64::MAX);
+
+        self.need_resolve = false;
+    }
+
+    // output textureに結果を焼き込む
+    fn output_image(&mut self) -> crate::NextImage {
+        let input_image_index = match self.params.display_image {
+            crate::DisplayImage::BaseColor => self.base_color_image_index,
+            crate::DisplayImage::Normal => self.normal_image_index,
+            crate::DisplayImage::Resolved => self.resolved_image_index,
+            crate::DisplayImage::Final => self.resolved_image_index,
+        };
+        let image_handles = &self.output_images[self.current_image_index];
+        let fences = [self.output_fences[self.current_image_index].clone()];
+        let command_buffer = self.output_command_buffers[self.current_image_index].clone();
 
         self.device.wait_fences(&fences, u64::MAX);
         self.device.reset_fences(&fences);
@@ -660,26 +863,21 @@ impl Renderer {
             &image_handles.image,
         );
 
-        command_buffer.cmd_bind_compute_pipeline(&self.final_compute_pipeline);
+        command_buffer.cmd_bind_compute_pipeline(&self.output_compute_pipeline);
         command_buffer.cmd_bind_descriptor_sets(
             vk::PipelineBindPoint::COMPUTE,
-            &self.final_compute_pipeline_layout,
+            &self.output_compute_pipeline_layout,
             0,
             &[self.descriptor_sets.storage_image.set.clone()],
             &[],
         );
         command_buffer.cmd_push_constants(
-            &self.final_compute_pipeline_layout,
+            &self.output_compute_pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
             &[FinalPushConstants {
-                sample_count: self.sample_count,
-                input_index: self.accumulate_storage_image_index,
-                output_index: self.final_storage_image_indices[self.current_image_index],
-                l_white: self.params.l_white,
-                aperture: self.params.aperture,
-                shutter_speed: self.params.shutter_speed,
-                iso: self.params.iso,
+                input_index: input_image_index,
+                output_index: self.output_image_indices[self.current_image_index],
             }],
         );
         command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
@@ -705,7 +903,7 @@ impl Renderer {
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
                     .wait_semaphores(&[]),
             ),
-            Some(self.final_fences[self.current_image_index].clone()),
+            Some(self.output_fences[self.current_image_index].clone()),
         );
 
         let image_view = image_handles.image_view.clone();
@@ -725,6 +923,7 @@ impl Renderer {
     pub fn render(&mut self, parameters: crate::Parameters) -> NextImage {
         self.set_parameters(parameters);
         self.ray_trace();
-        self.take_image()
+        self.resolve();
+        self.output_image()
     }
 }

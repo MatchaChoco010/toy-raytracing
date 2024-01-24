@@ -12,11 +12,20 @@ pub struct NextImage {
     pub rendering_time: Duration,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayImage {
+    BaseColor,
+    Normal,
+    Resolved,
+    Final,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Parameters {
     pub width: u32,
     pub height: u32,
     pub max_sample_count: u32,
+    pub display_image: DisplayImage,
     pub rotate_x: f32,
     pub rotate_y: f32,
     pub rotate_z: f32,
@@ -44,6 +53,7 @@ impl Default for Parameters {
             width: 400,
             height: 300,
             max_sample_count: 256,
+            display_image: DisplayImage::Final,
             rotate_x: 0.0,
             rotate_y: 0.0,
             rotate_z: 0.0,

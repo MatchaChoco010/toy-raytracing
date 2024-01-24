@@ -1,0 +1,30 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba32f) uniform readonly image2D inputImages[];
+layout(set = 0, binding = 0, rgba32f) uniform writeonly image2D outputImages[];
+
+layout(push_constant) uniform PushConstants {
+  uint inputIndex;
+  uint outputIndex;
+}
+pushConstants;
+
+void main() {
+  ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+  ivec2 dimensions = imageSize(inputImages[pushConstants.inputIndex]);
+  if (pixel_coords.x >= dimensions.x || pixel_coords.y >= dimensions.y) {
+    return;
+  }
+
+  // Flip the image vertically.
+  ivec2 load_coords = ivec2(pixel_coords.x, dimensions.y - pixel_coords.y - 1);
+
+  // divide color by sample count
+  vec4 color = imageLoad(inputImages[pushConstants.inputIndex], load_coords);
+
+  // store the result
+  imageStore(outputImages[pushConstants.outputIndex], pixel_coords, color);
+}

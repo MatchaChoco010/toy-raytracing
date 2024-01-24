@@ -11,4 +11,6 @@ glslc.exe src/shaders/src/entry/shadow/anyhit_alpha_blend.rahit -O --target-env=
 glslc.exe src/shaders/src/entry/shadow/anyhit_alpha_mask.rahit -O --target-env=vulkan1.2 -o src/shaders/spv/shadow/anyhit_alpha_mask.rahit.spv
 glslc.exe src/shaders/src/entry/shadow/miss.rmiss -O --target-env=vulkan1.2 -o src/shaders/spv/shadow/miss.rmiss.spv
 
-glslc.exe src/shaders/src/entry/final.comp -O --target-env=vulkan1.2 -o src/shaders/spv/final.comp.spv
+glslc.exe src/shaders/src/entry/resolve.comp -O --target-env=vulkan1.2 -o src/shaders/spv/resolve.comp.spv
+
+glslc.exe src/shaders/src/entry/output.comp -O --target-env=vulkan1.2 -o src/shaders/spv/output.comp.spv
