@@ -90,6 +90,12 @@ impl Pane {
                                         );
                                     });
                                 ui.end_row();
+
+                                ui.label("denoise every sample: ");
+                                ui.add(egui::widgets::Checkbox::without_text(
+                                    &mut state.denoise_every_sample,
+                                ));
+                                ui.end_row();
                             });
                     });
 

@@ -26,6 +26,7 @@ pub struct Parameters {
     pub height: u32,
     pub max_sample_count: u32,
     pub display_image: DisplayImage,
+    pub denoise_every_sample: bool,
     pub rotate_x: f32,
     pub rotate_y: f32,
     pub rotate_z: f32,
@@ -54,6 +55,7 @@ impl Default for Parameters {
             height: 300,
             max_sample_count: 256,
             display_image: DisplayImage::Final,
+            denoise_every_sample: false,
             rotate_x: 0.0,
             rotate_y: 0.0,
             rotate_z: 0.0,
@@ -83,6 +85,7 @@ impl PartialEq for Parameters {
             && self.height == other.height
             && self.max_sample_count == other.max_sample_count
             // && self.display_image == other.display_image
+            && self.denoise_every_sample == other.denoise_every_sample
             && self.rotate_x == other.rotate_x
             && self.rotate_y == other.rotate_y
             && self.rotate_z == other.rotate_z

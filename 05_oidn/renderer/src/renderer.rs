@@ -1059,7 +1059,7 @@ impl Renderer {
             .wait_fences(&[self.resolve_fence.clone()], u64::MAX);
 
         self.need_resolve = false;
-        if self.sample_count == self.params.max_sample_count {
+        if self.params.denoise_every_sample || self.sample_count == self.params.max_sample_count {
             self.need_denoise = true;
         }
     }
@@ -1168,7 +1168,9 @@ impl Renderer {
             crate::DisplayImage::Normal => self.normal_image_index,
             crate::DisplayImage::Resolved => self.resolved_image_index,
             crate::DisplayImage::Final => {
-                if self.sample_count == self.params.max_sample_count {
+                if self.params.denoise_every_sample
+                    || self.sample_count == self.params.max_sample_count
+                {
                     self.denoised_image_index
                 } else {
                     self.resolved_image_index
