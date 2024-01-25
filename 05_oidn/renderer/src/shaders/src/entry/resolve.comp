@@ -10,36 +10,10 @@ layout(push_constant) uniform PushConstants {
   uint inputIndex;
   uint outputIndex;
   uint sampleCount;
-  float lWhite;
-  float aperture;
-  float shutterSpeed;
-  float ISO;
 }
 pushConstants;
 
-// 輝度計算関数
-float luminance(vec3 color) {
-  return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
-}
-
-// 露出補正関数
-vec3 exposure(vec3 color) {
-  // L_avg = 1000 / 65 * aperture^2 / (shutterSpeed * ISO)
-  float lAvg = 1000.0 / 65.0 * pushConstants.aperture * pushConstants.aperture /
-               (pushConstants.shutterSpeed * pushConstants.ISO);
-  return 0.18 / lAvg * color;
-}
-
-// Reinhardトーンマッピング関数
-vec3 reinhardToneMapping(vec3 color) {
-  return color / (luminance(color) + vec3(1.0)) *
-         (1 + luminance(color) / (pushConstants.lWhite * pushConstants.lWhite));
-}
-
-// ガンマ補正関数
-vec3 gammaCorrection(vec3 color) { return pow(color, vec3(1.0 / 2.2)); }
-
-// サンプル総数で割って、露出補正、トーンマッピング、ガンマ補正をかけて出力する。
+// サンプル総数で割って出力する。
 void main() {
   ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
   ivec2 dimensions = imageSize(inputImages[pushConstants.inputIndex]);
@@ -56,5 +30,5 @@ void main() {
 
   // store the result
   imageStore(outputImages[pushConstants.outputIndex], pixel_coords,
-             vec4(gammaCorrection(reinhardToneMapping(exposure(color))), 1.0));
+             vec4(color, 1.0));
 }

@@ -1,3 +1,7 @@
+#[cfg(target_os = "linux")]
+use ash::extensions::khr::ExternalMemoryFd;
+#[cfg(target_os = "windows")]
+use ash::extensions::khr::ExternalMemoryWin32;
 use ash::{
     extensions::khr::{
         AccelerationStructure, DeferredHostOperations, RayTracingPipeline, Swapchain,
@@ -18,6 +22,10 @@ pub fn get_required_device_extensions(required_device_extensions: &[CString]) ->
         RayTracingPipeline::name().to_owned(),
         AccelerationStructure::name().to_owned(),
         DeferredHostOperations::name().to_owned(),
+        #[cfg(target_os = "linux")]
+        ExternalMemoryFd::name().to_owned(),
+        #[cfg(target_os = "windows")]
+        ExternalMemoryWin32::name().to_owned(),
     ]);
     required_device_extensions
 }

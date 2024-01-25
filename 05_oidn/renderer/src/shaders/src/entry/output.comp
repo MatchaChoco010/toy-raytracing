@@ -9,9 +9,37 @@ layout(set = 0, binding = 0, rgba32f) uniform writeonly image2D outputImages[];
 layout(push_constant) uniform PushConstants {
   uint inputIndex;
   uint outputIndex;
+  float lWhite;
+  float aperture;
+  float shutterSpeed;
+  float ISO;
+  uint enableToneMapping;
 }
 pushConstants;
 
+// 輝度計算関数
+float luminance(vec3 color) {
+  return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+}
+
+// 露出補正関数
+vec3 exposure(vec3 color) {
+  // L_avg = 1000 / 65 * aperture^2 / (shutterSpeed * ISO)
+  float lAvg = 1000.0 / 65.0 * pushConstants.aperture * pushConstants.aperture /
+               (pushConstants.shutterSpeed * pushConstants.ISO);
+  return 0.18 / lAvg * color;
+}
+
+// Reinhardトーンマッピング関数
+vec3 reinhardToneMapping(vec3 color) {
+  return color / (luminance(color) + vec3(1.0)) *
+         (1 + luminance(color) / (pushConstants.lWhite * pushConstants.lWhite));
+}
+
+// ガンマ補正関数
+vec3 gammaCorrection(vec3 color) { return pow(color, vec3(1.0 / 2.2)); }
+
+// 必要に応じて露出補正、トーンマッピング、ガンマ補正をかけて出力する
 void main() {
   ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
   ivec2 dimensions = imageSize(inputImages[pushConstants.inputIndex]);
@@ -26,5 +54,11 @@ void main() {
   vec4 color = imageLoad(inputImages[pushConstants.inputIndex], load_coords);
 
   // store the result
-  imageStore(outputImages[pushConstants.outputIndex], pixel_coords, color);
+  if (pushConstants.enableToneMapping == 0) {
+    imageStore(outputImages[pushConstants.outputIndex], pixel_coords, color);
+  } else {
+    imageStore(
+        outputImages[pushConstants.outputIndex], pixel_coords,
+        vec4(gammaCorrection(reinhardToneMapping(exposure(color.rgb))), 1.0));
+  }
 }

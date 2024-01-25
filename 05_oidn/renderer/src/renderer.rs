@@ -1,5 +1,6 @@
 use ash::vk;
 use bytemuck;
+use oidn::{OidnBuffer, OidnDevice, OidnFilter};
 use std::time::{Duration, Instant};
 
 use crate::NextImage;
@@ -43,10 +44,26 @@ struct ResolvePushConstants {
     input_index: u32,
     output_index: u32,
     sample_count: u32,
-    l_white: f32,
-    aperture: f32,
-    shutter_speed: f32,
-    iso: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct BeforeDenoisePushConstants {
+    color_image_index: u32,
+    albedo_image_index: u32,
+    normal_image_index: u32,
+    padding: [u32; 1],
+    color_buffer_address: u64,
+    albedo_buffer_address: u64,
+    normal_buffer_address: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct AfterDenoisePushConstants {
+    output_image_index: u32,
+    padding: [u32; 1],
+    output_buffer_address: u64,
 }
 
 #[repr(C)]
@@ -54,6 +71,11 @@ struct ResolvePushConstants {
 struct FinalPushConstants {
     input_index: u32,
     output_index: u32,
+    l_white: f32,
+    aperture: f32,
+    shutter_speed: f32,
+    iso: f32,
+    enable_tone_mapping: u32,
 }
 
 pub struct Renderer {
@@ -73,13 +95,35 @@ pub struct Renderer {
     base_color_image: ashtray::utils::ImageHandles,
     normal_image: ashtray::utils::ImageHandles,
     resolved_image: ashtray::utils::ImageHandles,
+    denoised_image: ashtray::utils::ImageHandles,
     output_images: [ashtray::utils::ImageHandles; 2],
 
+    color_buffer: ashtray::utils::SharedBuffer,
+    albedo_buffer: ashtray::utils::SharedBuffer,
+    normal_buffer: ashtray::utils::SharedBuffer,
+    output_buffer: ashtray::utils::SharedBuffer,
+
+    oidn_device: OidnDevice,
+    oidn_filter: OidnFilter,
+    oidn_color_buffer: OidnBuffer,
+    oidn_albedo_buffer: OidnBuffer,
+    oidn_normal_buffer: OidnBuffer,
+    oidn_output_buffer: OidnBuffer,
+
+    before_denoise_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
+    before_denoise_compute_pipeline: ashtray::ComputePipelineHandle,
+    after_denoise_compute_pipeline_layout: ashtray::PipelineLayoutHandle,
+    after_denoise_compute_pipeline: ashtray::ComputePipelineHandle,
+    denoise_command_buffer: ashtray::CommandBufferHandle,
+    denoise_fence: ashtray::FenceHandle,
+
     descriptor_sets: ashtray::utils::BindlessDescriptorSets,
+
     accumulate_image_index: u32,
     base_color_image_index: u32,
     normal_image_index: u32,
     resolved_image_index: u32,
+    denoised_image_index: u32,
     output_image_indices: [u32; 2],
 
     scene_objects: Option<crate::scene::SceneObjects>,
@@ -111,6 +155,7 @@ pub struct Renderer {
     rendering_time: Duration,
 
     need_resolve: bool,
+    need_denoise: bool,
 }
 impl Renderer {
     pub fn new(
@@ -169,6 +214,14 @@ impl Renderer {
             width,
             height,
         );
+        let denoised_image = ashtray::utils::create_storage_image(
+            &device,
+            &queue_handles,
+            &allocator,
+            &transfer_command_buffer,
+            width,
+            height,
+        );
         let output_images = [
             ashtray::utils::create_shader_readonly_image(
                 &device,
@@ -191,6 +244,51 @@ impl Renderer {
                 vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
             ),
         ];
+
+        // oidn用bufferの確保
+        let color_buffer = ashtray::utils::SharedBuffer::new(
+            &device,
+            width as u64 * height as u64 * 3 * 32,
+            vk::BufferUsageFlags::TRANSFER_DST
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
+        let albedo_buffer = ashtray::utils::SharedBuffer::new(
+            &device,
+            width as u64 * height as u64 * 3 * 32,
+            vk::BufferUsageFlags::TRANSFER_DST
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
+        let normal_buffer = ashtray::utils::SharedBuffer::new(
+            &device,
+            width as u64 * height as u64 * 3 * 32,
+            vk::BufferUsageFlags::TRANSFER_DST
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
+        let output_buffer = ashtray::utils::SharedBuffer::new(
+            &device,
+            width as u64 * height as u64 * 3 * 32,
+            vk::BufferUsageFlags::TRANSFER_SRC
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
+
+        // oidnの初期化
+        let oidn_device = OidnDevice::new();
+        let oidn_color_buffer = oidn_device.new_buffer(&color_buffer);
+        let oidn_albedo_buffer = oidn_device.new_buffer(&albedo_buffer);
+        let oidn_normal_buffer = oidn_device.new_buffer(&normal_buffer);
+        let oidn_output_buffer = oidn_device.new_buffer(&output_buffer);
+        let mut oidn_filter = oidn_device.new_filter("RT");
+        oidn_filter.hdr(true);
+        oidn_filter.srgb(false);
+        oidn_filter.resize(width, height);
+        oidn_filter.color(&oidn_color_buffer);
+        oidn_filter.albedo(&oidn_albedo_buffer);
+        oidn_filter.normal(&oidn_normal_buffer);
+        oidn_filter.output(&oidn_output_buffer);
 
         // render用command bufferを作成
         let render_command_buffer = {
@@ -224,7 +322,11 @@ impl Renderer {
         descriptor_sets
             .storage_image
             .update(&resolved_image, resolved_image_index);
-        let output_image_indices = [4, 5];
+        let denoised_image_index = 4;
+        descriptor_sets
+            .storage_image
+            .update(&denoised_image, denoised_image_index);
+        let output_image_indices = [5, 6];
         descriptor_sets
             .storage_image
             .update(&output_images[0], output_image_indices[0]);
@@ -259,6 +361,56 @@ impl Renderer {
                 .next()
                 .unwrap();
         let resolve_fence = ashtray::utils::create_signaled_fence(&device);
+
+        // denosiseのcompute pipelineを作成
+        let before_denoise_compute_pipeline_layout = device.create_pipeline_layout(
+            &vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&[
+                    *descriptor_sets.storage_image.layout,
+                    *descriptor_sets.storage_buffer.layout,
+                ])
+                .push_constant_ranges(&[vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<BeforeDenoisePushConstants>() as u32,
+                }]),
+        );
+        let before_denoise_compute_shader_module = ashtray::utils::create_shader_module(
+            &device,
+            &include_bytes!("./shaders/spv/before_denoise.comp.spv")[..],
+        );
+        let before_denoise_compute_pipeline = ashtray::utils::create_compute_pipeline(
+            &device,
+            &before_denoise_compute_pipeline_layout,
+            &before_denoise_compute_shader_module,
+        );
+        let after_denoise_compute_pipeline_layout = device.create_pipeline_layout(
+            &vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&[
+                    *descriptor_sets.storage_image.layout,
+                    *descriptor_sets.storage_buffer.layout,
+                ])
+                .push_constant_ranges(&[vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<AfterDenoisePushConstants>() as u32,
+                }]),
+        );
+        let after_denoise_compute_shader_module = ashtray::utils::create_shader_module(
+            &device,
+            &include_bytes!("./shaders/spv/after_denoise.comp.spv")[..],
+        );
+        let after_denoise_compute_pipeline = ashtray::utils::create_compute_pipeline(
+            &device,
+            &after_denoise_compute_pipeline_layout,
+            &after_denoise_compute_shader_module,
+        );
+        let denoise_command_buffer =
+            ashtray::utils::allocate_command_buffers(&device, &compute_command_pool, 1)
+                .into_iter()
+                .next()
+                .unwrap();
+        let denoise_fence = ashtray::utils::create_fence(&device);
 
         // outputのcompute pipelineを作成
         let output_compute_pipeline_layout = device.create_pipeline_layout(
@@ -307,13 +459,35 @@ impl Renderer {
             base_color_image,
             normal_image,
             resolved_image,
+            denoised_image,
             output_images,
 
+            color_buffer,
+            albedo_buffer,
+            normal_buffer,
+            output_buffer,
+
+            oidn_device,
+            oidn_color_buffer,
+            oidn_albedo_buffer,
+            oidn_normal_buffer,
+            oidn_output_buffer,
+            oidn_filter,
+
+            before_denoise_compute_pipeline_layout,
+            before_denoise_compute_pipeline,
+            after_denoise_compute_pipeline_layout,
+            after_denoise_compute_pipeline,
+            denoise_command_buffer,
+            denoise_fence,
+
             descriptor_sets,
+
             accumulate_image_index,
             base_color_image_index,
             normal_image_index,
             resolved_image_index,
+            denoised_image_index,
             output_image_indices,
 
             scene_objects: None,
@@ -344,6 +518,7 @@ impl Renderer {
             rendering_time: Duration::from_secs(0),
 
             need_resolve: false,
+            need_denoise: false,
         }
     }
 
@@ -526,6 +701,14 @@ impl Renderer {
                 self.params.width,
                 self.params.height,
             );
+            self.denoised_image = ashtray::utils::create_storage_image(
+                &self.device,
+                &self.queue_handles,
+                &self.allocator,
+                &self.transfer_command_buffer,
+                self.params.width,
+                self.params.height,
+            );
             self.output_images = [
                 ashtray::utils::create_shader_readonly_image(
                     &self.device,
@@ -581,6 +764,48 @@ impl Renderer {
             );
             self.device.wait_fences(&[fence], u64::MAX);
 
+            // oidn用bufferの確保
+            self.color_buffer = ashtray::utils::SharedBuffer::new(
+                &self.device,
+                self.params.width as u64 * self.params.height as u64 * 3 * 32,
+                vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            );
+            self.albedo_buffer = ashtray::utils::SharedBuffer::new(
+                &self.device,
+                self.params.width as u64 * self.params.height as u64 * 3 * 32,
+                vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            );
+            self.normal_buffer = ashtray::utils::SharedBuffer::new(
+                &self.device,
+                self.params.width as u64 * self.params.height as u64 * 3 * 32,
+                vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            );
+            self.output_buffer = ashtray::utils::SharedBuffer::new(
+                &self.device,
+                self.params.width as u64 * self.params.height as u64 * 3 * 32,
+                vk::BufferUsageFlags::TRANSFER_SRC
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            );
+
+            // oidnのfilterのりサイズ
+            self.oidn_color_buffer = self.oidn_device.new_buffer(&self.color_buffer);
+            self.oidn_albedo_buffer = self.oidn_device.new_buffer(&self.albedo_buffer);
+            self.oidn_normal_buffer = self.oidn_device.new_buffer(&self.normal_buffer);
+            self.oidn_output_buffer = self.oidn_device.new_buffer(&self.output_buffer);
+            self.oidn_filter
+                .resize(self.params.width, self.params.height);
+            self.oidn_filter.color(&self.oidn_color_buffer);
+            self.oidn_filter.albedo(&self.oidn_albedo_buffer);
+            self.oidn_filter.normal(&self.oidn_normal_buffer);
+            self.oidn_filter.output(&self.oidn_output_buffer);
+
             // descriptor setの更新
             let accumulate_image_index = 0;
             self.descriptor_sets
@@ -598,7 +823,11 @@ impl Renderer {
             self.descriptor_sets
                 .storage_image
                 .update(&self.resolved_image, resolved_image_index);
-            let output_image_indices = [4, 5];
+            let denoised_image_index = 4;
+            self.descriptor_sets
+                .storage_image
+                .update(&self.denoised_image, denoised_image_index);
+            let output_image_indices = [5, 6];
             self.descriptor_sets
                 .storage_image
                 .update(&self.output_images[0], output_image_indices[0]);
@@ -641,6 +870,9 @@ impl Renderer {
                 Some(fence.clone()),
             );
             self.device.wait_fences(&[fence], u64::MAX);
+        } else {
+            // display imageのみの更新
+            self.params = parameters;
         }
     }
 
@@ -807,10 +1039,6 @@ impl Renderer {
                 sample_count: self.sample_count,
                 input_index: self.accumulate_image_index,
                 output_index: self.resolved_image_index,
-                l_white: self.params.l_white,
-                aperture: self.params.aperture,
-                shutter_speed: self.params.shutter_speed,
-                iso: self.params.iso,
             }],
         );
         command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
@@ -831,6 +1059,106 @@ impl Renderer {
             .wait_fences(&[self.resolve_fence.clone()], u64::MAX);
 
         self.need_resolve = false;
+        if self.sample_count == self.params.max_sample_count {
+            self.need_denoise = true;
+        }
+    }
+
+    fn denoise(&mut self) {
+        if !self.need_denoise {
+            return;
+        }
+
+        // oidn用のbufferに蓄積画像をコピー
+        let command_buffer = self.denoise_command_buffer.clone();
+        command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+        ashtray::utils::begin_onetime_command_buffer(&command_buffer);
+        command_buffer.cmd_bind_compute_pipeline(&self.before_denoise_compute_pipeline);
+        command_buffer.cmd_bind_descriptor_sets(
+            vk::PipelineBindPoint::COMPUTE,
+            &self.before_denoise_compute_pipeline_layout,
+            0,
+            &[
+                self.descriptor_sets.storage_image.set.clone(),
+                self.descriptor_sets.storage_buffer.set.clone(),
+            ],
+            &[],
+        );
+        command_buffer.cmd_push_constants(
+            &self.before_denoise_compute_pipeline_layout,
+            vk::ShaderStageFlags::COMPUTE,
+            0,
+            &[BeforeDenoisePushConstants {
+                color_image_index: self.resolved_image_index,
+                albedo_image_index: self.base_color_image_index,
+                normal_image_index: self.normal_image_index,
+                color_buffer_address: self.color_buffer.device_address,
+                albedo_buffer_address: self.albedo_buffer.device_address,
+                normal_buffer_address: self.normal_buffer.device_address,
+                padding: [0; 1],
+            }],
+        );
+        command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
+        command_buffer.end_command_buffer();
+        self.device.reset_fences(&[self.denoise_fence.clone()]);
+        self.device.queue_submit(
+            self.queue_handles.compute.queue,
+            std::slice::from_ref(
+                &vk::SubmitInfo::builder()
+                    .command_buffers(&[*command_buffer])
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
+                    .wait_semaphores(&[]),
+            ),
+            Some(self.denoise_fence.clone()),
+        );
+        self.device
+            .wait_fences(&[self.denoise_fence.clone()], u64::MAX);
+
+        // oidnでdenoise
+        self.oidn_filter.execute();
+
+        // oidnの結果をoutput imageにコピー
+        let command_buffer = self.denoise_command_buffer.clone();
+        command_buffer.reset_command_buffer(vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+        ashtray::utils::begin_onetime_command_buffer(&command_buffer);
+        command_buffer.cmd_bind_compute_pipeline(&self.after_denoise_compute_pipeline);
+        command_buffer.cmd_bind_descriptor_sets(
+            vk::PipelineBindPoint::COMPUTE,
+            &self.after_denoise_compute_pipeline_layout,
+            0,
+            &[
+                self.descriptor_sets.storage_image.set.clone(),
+                self.descriptor_sets.storage_buffer.set.clone(),
+            ],
+            &[],
+        );
+        command_buffer.cmd_push_constants(
+            &self.after_denoise_compute_pipeline_layout,
+            vk::ShaderStageFlags::COMPUTE,
+            0,
+            &[AfterDenoisePushConstants {
+                output_image_index: self.denoised_image_index,
+                output_buffer_address: self.output_buffer.device_address,
+                padding: [0; 1],
+            }],
+        );
+        command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
+        command_buffer.end_command_buffer();
+        self.device.reset_fences(&[self.denoise_fence.clone()]);
+        self.device.queue_submit(
+            self.queue_handles.compute.queue,
+            std::slice::from_ref(
+                &vk::SubmitInfo::builder()
+                    .command_buffers(&[*command_buffer])
+                    .wait_dst_stage_mask(&[])
+                    .wait_semaphores(&[]),
+            ),
+            Some(self.denoise_fence.clone()),
+        );
+        self.device
+            .wait_fences(&[self.denoise_fence.clone()], u64::MAX);
+
+        self.need_denoise = false;
     }
 
     // output textureに結果を焼き込む
@@ -839,7 +1167,20 @@ impl Renderer {
             crate::DisplayImage::BaseColor => self.base_color_image_index,
             crate::DisplayImage::Normal => self.normal_image_index,
             crate::DisplayImage::Resolved => self.resolved_image_index,
-            crate::DisplayImage::Final => self.resolved_image_index,
+            crate::DisplayImage::Final => {
+                if self.sample_count == self.params.max_sample_count {
+                    self.denoised_image_index
+                } else {
+                    self.resolved_image_index
+                }
+            }
+        };
+        let enable_tone_mapping = if self.params.display_image == crate::DisplayImage::Final
+            || self.params.display_image == crate::DisplayImage::Resolved
+        {
+            1
+        } else {
+            0
         };
         let image_handles = &self.output_images[self.current_image_index];
         let fences = [self.output_fences[self.current_image_index].clone()];
@@ -878,6 +1219,11 @@ impl Renderer {
             &[FinalPushConstants {
                 input_index: input_image_index,
                 output_index: self.output_image_indices[self.current_image_index],
+                l_white: self.params.l_white,
+                aperture: self.params.aperture,
+                shutter_speed: self.params.shutter_speed,
+                iso: self.params.iso,
+                enable_tone_mapping,
             }],
         );
         command_buffer.cmd_dispatch((self.params.width + 7) / 8, (self.params.height + 7) / 8, 1);
@@ -924,6 +1270,7 @@ impl Renderer {
         self.set_parameters(parameters);
         self.ray_trace();
         self.resolve();
+        self.denoise();
         self.output_image()
     }
 }

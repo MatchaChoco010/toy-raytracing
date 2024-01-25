@@ -129,12 +129,12 @@ impl AppCreator<Arc<Mutex<Allocator>>> for ViewerCreator {
 
 fn main() {
     egui_ash::run(
-        "04_sun_sky-viewer",
+        "05_oidn-viewer",
         ViewerCreator,
         RunOption {
             viewport_builder: Some(
                 egui::ViewportBuilder::default()
-                    .with_title("04_sun_sky")
+                    .with_title("05_oidn-viewer")
                     .with_inner_size(egui::vec2(1400.0, 800.0)),
             ),
             present_mode: vk::PresentModeKHR::MAILBOX,

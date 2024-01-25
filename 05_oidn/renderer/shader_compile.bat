@@ -13,4 +13,7 @@ glslc.exe src/shaders/src/entry/shadow/miss.rmiss -O --target-env=vulkan1.2 -o s
 
 glslc.exe src/shaders/src/entry/resolve.comp -O --target-env=vulkan1.2 -o src/shaders/spv/resolve.comp.spv
 
+glslc.exe src/shaders/src/entry/before_denoise.comp -O --target-env=vulkan1.2 -o src/shaders/spv/before_denoise.comp.spv
+glslc.exe src/shaders/src/entry/after_denoise.comp -O --target-env=vulkan1.2 -o src/shaders/spv/after_denoise.comp.spv
+
 glslc.exe src/shaders/src/entry/output.comp -O --target-env=vulkan1.2 -o src/shaders/spv/output.comp.spv

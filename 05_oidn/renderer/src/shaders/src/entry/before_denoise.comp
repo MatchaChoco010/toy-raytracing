@@ -1,0 +1,47 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : enable
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba32f) uniform readonly image2D inputImages[];
+
+layout(buffer_reference, scalar) buffer writeonly OutputBuffer { vec3 v[]; };
+
+layout(push_constant) uniform PushConstants {
+  uint colorImageIndex;
+  uint albedoImageIndex;
+  uint normalImageIndex;
+  uint[1] padding;
+  uint64_t colorBufferIndex;
+  uint64_t albedoBufferIndex;
+  uint64_t normalBufferIndex;
+}
+pushConstants;
+
+// bufferにコピーする
+void main() {
+  ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+  ivec2 dimensions = imageSize(inputImages[pushConstants.colorImageIndex]);
+  if (pixel_coords.x >= dimensions.x || pixel_coords.y >= dimensions.y) {
+    return;
+  }
+  uint index = pixel_coords.y * dimensions.x + pixel_coords.x;
+
+  vec3 color =
+      imageLoad(inputImages[pushConstants.colorImageIndex], pixel_coords).rgb;
+  OutputBuffer colorBuffer = OutputBuffer(pushConstants.colorBufferIndex);
+  colorBuffer.v[index] = color;
+
+  vec3 albedo =
+      imageLoad(inputImages[pushConstants.albedoImageIndex], pixel_coords).rgb;
+  OutputBuffer albedoBuffer = OutputBuffer(pushConstants.albedoBufferIndex);
+  albedoBuffer.v[index] = albedo;
+
+  vec3 normal =
+      imageLoad(inputImages[pushConstants.normalImageIndex], pixel_coords).rgb;
+  OutputBuffer normalBuffer = OutputBuffer(pushConstants.normalBufferIndex);
+  normalBuffer.v[index] = normal * 2.0 - 1.0;
+}

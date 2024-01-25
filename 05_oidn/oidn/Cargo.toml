@@ -1,0 +1,9 @@
+[package]
+name = "oidn"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ash.workspace = true
+ashtray = { path = "../ashtray" }
+oidn-sys = { path = "../oidn-sys" }

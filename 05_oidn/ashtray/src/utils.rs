@@ -19,3 +19,5 @@ mod sync_objects;
 pub use sync_objects::*;
 mod ray_tracing;
 pub use ray_tracing::*;
+mod shared_buffer;
+pub use shared_buffer::*;

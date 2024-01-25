@@ -1,9 +1,11 @@
 [workspace]
 members = [
   "ashtray",
+  "glb",
+  "oidn-sys",
+  "oidn",
   "renderer",
   "viewer",
-  "glb",
 ]
 resolver = "2"
 

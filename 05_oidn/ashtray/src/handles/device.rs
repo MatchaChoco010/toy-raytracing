@@ -2,6 +2,10 @@
 //! Deviceの破棄の処理まで行うDeviceHandleを定義する。
 
 use anyhow::Result;
+#[cfg(target_os = "linux")]
+use ash::extensions::khr::ExternalMemoryFd;
+#[cfg(target_os = "windows")]
+use ash::extensions::khr::ExternalMemoryWin32;
 use ash::{
     extensions::khr::{AccelerationStructure, RayTracingPipeline, Swapchain},
     vk,
@@ -15,10 +19,15 @@ use std::{
 
 struct DeviceHandleData {
     instance: crate::InstanceHandle,
+    physical_device: vk::PhysicalDevice,
     device: ash::Device,
     swapchain_loader: Swapchain,
     acceleration_structure_loader: AccelerationStructure,
     ray_tracing_pipeline_loader: RayTracingPipeline,
+    #[cfg(target_os = "windows")]
+    external_memory_win32: ExternalMemoryWin32,
+    #[cfg(target_os = "linux")]
+    external_memory_fd: ExternalMemoryFd,
     ref_count: AtomicUsize,
 }
 impl DeviceHandleData {
@@ -41,12 +50,25 @@ impl DeviceHandleData {
         // ray_tracing pipeline loader
         let ray_tracing_pipeline_loader = RayTracingPipeline::new(&instance, &device);
 
+        // external memory win32
+        #[cfg(target_os = "windows")]
+        let external_memory_win32 = ExternalMemoryWin32::new(&instance, &device);
+
+        // external memory fd
+        #[cfg(target_os = "linux")]
+        let external_memory_fd = ExternalMemoryFd::new(&instance, &device);
+
         Ok(Self {
             instance,
+            physical_device,
             device,
             swapchain_loader,
             acceleration_structure_loader,
             ray_tracing_pipeline_loader,
+            #[cfg(target_os = "windows")]
+            external_memory_win32,
+            #[cfg(target_os = "linux")]
+            external_memory_fd,
             ref_count: AtomicUsize::new(1),
         })
     }
@@ -261,6 +283,34 @@ impl DeviceHandle {
         }
     }
 
+    /// external memory win32のハンドルを取得する
+    #[cfg(target_os = "windows")]
+    pub fn get_memory_win32_handle(
+        &self,
+        memory_get_win32_handle_info: &vk::MemoryGetWin32HandleInfoKHR,
+    ) -> *mut std::ffi::c_void {
+        unsafe {
+            self.data()
+                .external_memory_win32
+                .get_memory_win32_handle(memory_get_win32_handle_info)
+                .expect("Failed to get memory win32 handle.")
+        }
+    }
+
+    /// external memory fdのハンドルを取得する
+    #[cfg(target_os = "linux")]
+    pub fn get_memory_fd(
+        &self,
+        memory_get_fd_info: &vk::MemoryGetFdInfoKHR,
+    ) -> std::os::raw::c_int {
+        unsafe {
+            self.data()
+                .external_memory_fd
+                .get_memory_fd(memory_get_fd_info)
+                .expect("Failed to get memory fd.")
+        }
+    }
+
     /// DescriptorSetの更新をする
     pub fn update_descriptor_sets(&self, write_descriptor_sets: &[vk::WriteDescriptorSet]) {
         unsafe {
@@ -378,6 +428,13 @@ impl DeviceHandle {
                     max_primitive_counts,
                 )
         }
+    }
+
+    /// physical device memory propertiesを取得する
+    pub fn get_physical_device_memory_properties(&self) -> vk::PhysicalDeviceMemoryProperties {
+        self.data()
+            .instance
+            .get_physical_device_memory_properties(self.data().physical_device)
     }
 
     // raw
